@@ -46,18 +46,12 @@ Once the reference sets are ready, LiRA can be used.
 
 Information on the parameters can be accessed by typing:
 ```sh
-$ python msi_profiler.py --help
+$ python LiRA.py --help
 ```
-
-Example of usage:
-```sh
-python path_to_msi_profiler/msi_profiler.py  --tumor_bam tumor.bam  --normal_bam normal.bam --bed hets_SNPs_chr22.bed --chromosomes 22  --fasta path_to_LiRA/chrs_fa/ --output_prefix example_chr22  --mode unphased --nprocs 8  --reference_set path_to_reference_sets_folder --min_coverage 8 --min_MS_length 6 --flank_size 10 --rus 1 2 3 4 5 6  --tolerated_mismatches 0
-```
-
 
 ### Example of usage
 ```sh
-python msi_profiler.py --tumor_bam test_tumor.bam  --normal_bam test_normal.bam  --bed germline_het_SNPs.bed --chromosomes 21 22 X --fasta ./chrs_fa/  --output_prefix example_unphased --mode unphased --nprocs 2  --reference_set path_to_reference_sets_folder  --min_coverage 8 --min_MS_length 6 --flank_size 5 --rus 1 2 3 4 5 6 
+python LiRA.py --bam test.bam --bed germline_het_SNPs.bed --chromosomes 21 22 X --fasta ./chrs_fa/  --output_prefix example_unphased --nprocs 2  --min_coverage 8 
 ```
 
 ### Example of output
@@ -74,8 +68,9 @@ XXX
 
 # Contact
 If you have any questions or suggestions please contact us: 
-- Isidro Cortes Ciriano: isidrolauscher at gmail.com  or isidro\_cortesciriano at hms.harvard.edu
+<!-- - Isidro Cortes Ciriano: isidrolauscher at gmail.com  or isidro\_cortesciriano at hms.harvard.edu
 - Peter J Park: peter\_park at hms.harvard.edu
+-->
 
 
 
