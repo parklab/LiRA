@@ -1,0 +1,20 @@
+#Name for this analysis.
+name	1465-heart_BulkDNA_WGSb
+#Path to working directory that will store the results of this analysis
+analysis_path	1465-heart_BulkDNA_WGSb
+#Path to the reference genome to which the relevant BAM file is aligned.
+reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
+#Path to BAM file.
+bam	/n/data1/bch/genetics/walsh-park/data/NormalSingleCell/Alignment/20160404_NYgenome_realignment/1465/1465-heart_BulkDNA_WGSb.bam
+#Path to the BAM index
+bam_index	/n/data1/bch/genetics/walsh-park/data/NormalSingleCell/Alignment/20160404_NYgenome_realignment/1465/1465-heart_BulkDNA_WGSb.bam.bai
+#Path to compressed VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.
+vcf	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz
+#Path to VCF index (tabix)
+vcf_index	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz.tbi
+#Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
+gender	male
+#Name of relevant sample in bam file
+sample	1465-heart_BulkDNA_WGSb
+#Name of individual of origin.
+individual	1465

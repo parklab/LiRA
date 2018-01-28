@@ -1,0 +1,6 @@
+Prior to using LiRA, set the LIRA_DIR environmental variable to the absolute path to the downloaded LiRA directory.
+
+At the moment, to run LiRA the input vcf must have been generated using GATK haplotype caller, and must be annotated with 1000 genomes common
+allele frequencies in the info field 'DBSNP_CAF.'  In future versions, a LiRA tool will assist with this step.
+
+Dependencies: Bedtools, htslib, samtools, and bcftools.
