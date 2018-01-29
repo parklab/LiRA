@@ -18,3 +18,5 @@ gender	male
 sample	1465-heart_BulkDNA_WGSb
 #Name of individual of origin.
 individual	1465
+#Path to phased vcf for this bulk sample
+phased_vcf	/n/data1/hms/dbmi/park/cbohrson/phasing/phased.vcf.gz

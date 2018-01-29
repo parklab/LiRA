@@ -7,11 +7,9 @@ reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
 #Path to BAM file.
 bam	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam
 #Path to the BAM index
-bam_index	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam.bai
-#Path to compressed VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.
+bam.index	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam.bai
+#Path to VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.
 vcf	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz
-#Path to VCF index (tabix)
-vcf_index	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz.tbi
 #Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
 gender	male
 #Name of relevant sample in bam file
