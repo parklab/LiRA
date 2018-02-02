@@ -52,6 +52,7 @@ Steps 3a, 3b, and 3c can be run concurrently.
   * Example: 
 ```
 ./lira setup --config config-example.txt
+./lira setup --config config-example-bulk.txt
 ```
 
 2. split_genome (single cell and bulk)

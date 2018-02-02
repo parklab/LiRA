@@ -1,7 +1,7 @@
 #Name for this analysis.
 name	1465-2-C1
 #Path to working directory that will store the results of this analysis
-analysis_path	1465-2-C1
+analysis_path	/n/data1/hms/dbmi/park/simon_chu/projects/LiRA/test1/1465
 #Path to the reference genome to which the relevant BAM file is aligned.
 reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
 #Path to BAM file.
