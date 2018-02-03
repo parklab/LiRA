@@ -1,15 +1,17 @@
 #Name for this analysis.
 name	1465-2-C1
 #Path to working directory that will store the results of this analysis
-analysis_path	/n/data1/hms/dbmi/park/simon_chu/projects/LiRA/test1/1465
+analysis_path	/n/data1/hms/dbmi/park/simon_chu/projects/LiRA/test/1465
 #Path to the reference genome to which the relevant BAM file is aligned.
 reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
 #Path to BAM file.
 bam	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam
 #Path to the BAM index
-bam.index	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam.bai
+bam_index	/n/data1/bch/genetics/walsh-park/data/CockayneXP/Alignment/20161011_NYGenome_realign/1465-2-C1.bam.bai
 #Path to VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.
 vcf	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz
+#Path to the vcf index
+vcf_index       /n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.dbsnp.vcf.gz.tbi
 #Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
 gender	male
 #Name of relevant sample in bam file

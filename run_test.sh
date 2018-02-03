@@ -10,7 +10,7 @@
 
 #./lira split_genome  --config config-example.txt --chr 1
 #./lira get_vcf_info --config config-example.txt --chr 1
-./lira get_alt_counts --config config-example-bulk.txt --chr 1
+#./lira get_alt_counts --config config-example-bulk.txt --chr 1
 /n/data1/hms/dbmi/park/simon_chu/projects/LiRA/test/1465/job_scripts/1_1.sh
 ./lira check_results --config config-example.txt
 ./lira collect_results --config config-example.txt --chr 1
