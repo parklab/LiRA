@@ -52,7 +52,6 @@ Steps 3a, 3b, and 3c can be run concurrently.
   * Example: 
 ```
 ./lira setup --config config-example.txt
-./lira setup --config config-example-bulk.txt
 ```
 
 2. split_genome (single cell and bulk)
@@ -156,4 +155,28 @@ get_alt_counts (only necessary over bulk samples)
   * Example: 
 ```
 ./lira check_power --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
+```
+
+11. collect_power
+  * Arguments: Single cell config file, bulk config file
+  * Collect the results of (9)
+  * Example: 
+```
+./lira collect_power --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
+```
+
+12. bootstrap_germline
+  * Arguments: Single cell config file, bulk config file
+  * Select random, linked distance and size-matched germline variant sets to calibrate the relationshipbetween false positive rate and composite coverage.
+  * Example: 
+```
+./lira bootstrap_germline --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
+```
+
+13. call_ssnvs
+  * Arguments: Single cell config file, bulk config file
+  * Call sSNVs and calculate genome-wide mutation rate using the results of compare_to_bulk and bootstrap_germline.  Produces an rda file (ssnvs.<name (bulk)>.rda) containing info about all somatic SNPs.  Also produces a rate plot (rate-plot.<name (bulk)>.rda) showing the sSNV rate vs. composite. coverage and the threshold decision.
+  * Example: 
+```
+./lira call_ssnvs --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
 ```
