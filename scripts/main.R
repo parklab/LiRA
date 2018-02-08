@@ -706,9 +706,9 @@ if(cmd == "collect_compare") {
   names(mutations)[names(mutations) == "stat"] <- "composite_coverage"
   all.somatic <- mutations[mutations$somatic.proper & (mutations$bulk.alt.count == 0),]
   all.somatic$pair.id <- paste(rownames(all.somatic),all.somatic$stat.to)
-  all.somatic$hc.bulk <- linkage[all.somatic$pair.id,"hc.bulk"]
-  all.somatic$dc.single.cell <- linkage[all.somatic$pair.id,"dc.single.cell"]
-  all.somatic$hc.single.cell <- linkage[all.somatic$pair.id,"hc.single.cell"]
+  all.somatic$hc.bulk <- data[all.somatic$pair.id,"hc.bulk"]
+  all.somatic$dc.single.cell <- data[all.somatic$pair.id,"dc.single.cell"]
+  all.somatic$hc.single.cell <- data[all.somatic$pair.id,"hc.single.cell"]
   
   candidate.somatic <- all.somatic[all.somatic$composite_coverage >= 2,]
   save(mutations,file=paste("mutations.",bulk.config$name,".rda",sep=""))
