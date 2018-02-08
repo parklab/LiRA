@@ -51,6 +51,18 @@ def parse_args():
 	parser['check_power'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
 	parser['check_power'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
 	parser['check_power'].set_defaults(func=check_power)
+	parser['collect_power'] = parser['subparse'].add_parser('collect_power',help='Collect the results of jobs scripts made by "power_jobs".')
+	parser['collect_power'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
+	parser['collect_power'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
+	parser['collect_power'].set_defaults(func=collect_power)
+	parser['bootstrap_germline'] = parser['subparse'].add_parser('bootstrap_germline',help='Select random, linked distance and size-matched germline variant sets to calibrate the relationship between false positive rate and composite coverage.')
+	parser['bootstrap_germline'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
+	parser['bootstrap_germline'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
+	parser['bootstrap_germline'].set_defaults(func=bootstrap_germline)
+	parser['call_ssnvs'] = parser['subparse'].add_parser('call_ssnvs',help='Call ssnvs')
+	parser['call_ssnvs'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
+	parser['call_ssnvs'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
+	parser['call_ssnvs'].set_defaults(func=call_ssnvs)
 	return parser['argparse'].parse_args()
 
 def setup(args):
@@ -83,6 +95,14 @@ def power_jobs(args):
 def check_power(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"check_power",args.bulk_config])
 
+def collect_power(args):
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"collect_power",args.bulk_config])
+
+def bootstrap_germline(args):
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"bootstrap_germline",args.bulk_config])
+
+def call_ssnvs(args):
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"call_ssnvs",args.bulk_config])
 
 if __name__ == "__main__":
 	args = parse_args()
