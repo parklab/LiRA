@@ -10,6 +10,7 @@ read.config <- function(config.path) {
   }
   names(obj) <- config[,1]
   
+  suppressWarnings(dir.create(obj[["analysis_path"]]))
   for(n in c("analysis_path","reference","bam","bam_index","vcf","vcf_index","phased_vcf")) {
     if(n %in% names(obj)) {
       obj[[n]] <- normalizePath(obj[[n]])
@@ -51,7 +52,7 @@ out.log <- function(out,line) {
 
 if(cmd == "setup") {
   owd <- getwd()
-  dir.create(config$analysis_path)
+  suppressWarnings(dir.create(config$analysis_path))
   setwd(config$analysis_path)
   
   #soft link bams
