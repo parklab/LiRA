@@ -15,6 +15,7 @@ The following include tested versions in parenthensis; later versions are likely
 3. bcftools (1.2)
 4. htslib (1.2.1)
 5. bedtools (2.23.0)
+6. picard (2.7.1)
 6. R (3.3.1)
 	+ stringr
 	+ digest
@@ -29,10 +30,13 @@ Download [SHAPEIT2](https://mathgen.stats.ox.ac.uk/genetics_software/shapeit/sha
 
 Download [SnpSift](http://snpeff.sourceforge.net/download.html)
 
+Download [picard](https://github.com/broadinstitute/picard/releases/tag/2.17.8)
+
 ## Installation
 1. Clone this repository `git clone https://github.com/parklab/LiRA`
 2. Set the `LIRA_DIR` environmental variable to the absolute path to your local copy of this repository (e.g. if it is in /home/me/LiRA, then add `export LIRA_DIR=/home/me/LiRA` to your `.bash_profile`)
 3. Ensure that samtools, bcftools, and bedtools are in your `PATH`.
+4. Set the `PICARD` environmental variable to the absolute path to your picard jar file.
 
 ## Inputs to LiRA (required)
   * A set of called variants in vcf format.  This callset should include both germline and prospective somatic variants, and must include at least one single-cell and bulk sample.  At the moment, to run LiRA the input vcf must have been generated using GATK haplotype caller, and must be annotated with 1000 genomes common allele frequencies in the info field 'DBSNP_CAF.'  In future versions, a LiRA tool will assist with this.  For now, this can be accomplished using the annotate tool from SnpSift and a dbSNP release from the NCBI database.  See: https://www.ncbi.nlm.nih.gov/variation/docs/human_variation_vcf/, e.g. `common_all_20170710.vcf.gz`

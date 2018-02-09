@@ -862,7 +862,7 @@ if(cmd == "local_power_function") {
       write.table(file = "read_names.txt",x = input.readnames,quote = F,row.names = F,col.names = F)
       log(logfile,paste("samtools view -b ",bam," ",big.region,
                         " > tmp.bam",
-                        " && picard FilterSamReads I=tmp.bam O=intersection.bam READ_LIST_FILE=read_names.txt FILTER=includeReadList SORT_ORDER=coordinate CREATE_INDEX=true WRITE_READS_FILES=false",
+                        " && java -jar $PICARD FilterSamReads I=tmp.bam O=intersection.bam READ_LIST_FILE=read_names.txt FILTER=includeReadList SORT_ORDER=coordinate CREATE_INDEX=true WRITE_READS_FILES=false",
                         " && samtools view -H intersection.bam > header.txt",
                         " && samtools view intersection.bam > intersection.sam",
                         " && samtools view intersection.bam | cut -f 1 > rn.txt",
