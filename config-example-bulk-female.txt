@@ -1,26 +1,26 @@
 #Name for this analysis.
-name	1465-2-C1
+name	4643_Bulk-Liver
 
 #Path to working directory that will store the results of this analysis
-analysis_path	1465-2-C1
+analysis_path	4643_Bulk-Liver
 
 #Path to the reference genome to which the relevant BAM file is aligned. HG19 currently supported.
 reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
 
 #Path to BAM file with index in the same directory (*.bam.bai)
-bam	/n/data1/hms/dbmi/park/cbohrson/subsampled/1465-2-C1.bam
+bam	/n/data1/hms/dbmi/park/cbohrson/subsampled/4643_Bulk-Liver.bam
 
 #Path to compressed VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.  Must be compressed using bgzip and indexed with tabix (*.vcf.gz.tbi)
 vcf	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.vcf.gz
 
 #Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
-gender	male
+gender	female
 
 #Name of relevant sample in bam file
-sample	1465-2-C1
+sample	4643_Bulk-Liver
 
 #Name of individual of origin.
-individual	1465
+individual	4643
 
-#Indicates that this is not a bulk sample
-bulk	F
+#Indicates that this is a bulk sample.  Can be omitted or annotated as 'F' for single cell.
+bulk	T

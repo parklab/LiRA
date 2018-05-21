@@ -1,0 +1,41 @@
+#Name for this analysis.
+name	1465QA25_A12
+
+#Path to working directory that will store the results of this analysis
+analysis_path	1465QA25_A12
+
+#Path to the reference genome to which the relevant BAM file is aligned.
+reference	/n/data1/hms/dbmi/park/SOFTWARE/LongRanger/refdata-b37-2.1.0/fasta/genome.fa
+
+#Path to indexed BAM file (*.bam.bai)
+bam	/n/data1/hms/dbmi/park/DATA/Walsh_10x/Alignment_longranger_wgs/1465QA25_A12/outs/phased_possorted_bam.bam
+
+#Path to indexed bulk BAM file (*.bam.bai).
+bam_bulk	/n/data1/hms/dbmi/park/DATA/Walsh_10x/Alignment_longranger_wgs/1465/outs/phased_possorted_bam.bam
+
+#Path to tabix-indexed VCF file with calls for a sample of the same name as 'sample' below
+vcf	/n/data1/hms/dbmi/park/cbohrson/10x_vcf/1465QA25_A12.vcf.gz
+
+#Path to tabix-indexed bulk VCF file with calls for a sample of the same name as 'sample_bulk' below
+vcf_bulk	/n/data1/hms/dbmi/park/cbohrson/10x_vcf/1465.vcf.gz
+
+#Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
+gender	male
+
+#Name of relevant sample in bam file
+sample	1465QA25_A12
+
+#Name of the bulk sample in bam_bulk file
+sample_bulk	1465
+
+#Name of individual of origin.
+individual	1465
+
+#Path to a DBSNP release vcf to use for this analysis
+dbsnp	/n/data1/hms/dbmi/park/cbohrson/common_all_20160601.vcf.gz
+
+#Path to snpEff installation
+snpeff	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/snpEff
+
+#Indicates this sample is from 10X genomics.  Ordinarily this line can be absent or set to 'lira'
+mode	10X

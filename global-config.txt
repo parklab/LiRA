@@ -1,0 +1,38 @@
+#This file ignores blank and commented ('#') lines.
+#Values are noted as "<KEY>	<VALUE>"
+
+#Path to snpEff installation
+SNPEFF	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/snpEff
+
+#Path to DBSNP database
+DBSNP	/n/data1/hms/dbmi/park/cbohrson/common_all_20160601.vcf.gz
+
+#Path to downloaded 1000 genomes haplotype reference panel
+KGEN	/n/data1/hms/dbmi/park/simon_chu/projects/data/1000G
+
+#Path to picard JAR file
+PICARD	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/picard.jar
+
+#Gap between SNPs required for regions to be chunked separately
+GAP_REQUIREMENT	2000
+
+#Target number of reads per LiRA job
+READS_TARGET	100000
+
+#Partition to submit to for parallelization
+PARTITION	short
+
+#Batch size for parallelization (number of scripts per job)
+BATCH_SIZE	10
+
+#Method to use for creating sSNV control curve of composite coverage vs. genome-wide sSNV rate.  Options are 'germline' (use germline sSNVs) or 'general' (use all powered sites).  'general' is not yet implemented.
+CONTROL_METHOD	germline
+
+#For 10X, the max distance between two SNPs to be considered within a barcode family
+MAX_DISTANCE_10X	50000
+
+#Script in $LIRA_DIR/scripts to use for parallelization
+PARALLEL_SCRIPT	slurm.R
+
+#Number of sampling replicates to use for CONTROL_METHOD
+BOOTSTRAP_REPLICATES	100
