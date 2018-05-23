@@ -1,5 +1,5 @@
 # LiRA
-LiRA (**Li**nked **R**ead **A**nalysis") is a computational tool for removing amplification artifacts from single-cell DNA sequencing data and estimating mutation rates in single cells.  It uses read-backed phasing to evaluate candidate somatic single-nucleotide variants (sSNVs) occurring near population-polymorphic germline heterozygous sites (gHets), and from the number of such regions covered across the genome infers sensitivity and estimates the genome-wide rate of somatic mutation.  To detect and remove artifacts, LiRA utilizes the fact that true somatic variation appears in linkage with known, germline heterozygous variation, while artifacts do not.
+LiRA (**Li**nked **R**ead **A**nalysis) is a computational tool for removing amplification artifacts from single-cell DNA sequencing data and estimating mutation rates in single cells.  It uses read-backed phasing to evaluate candidate somatic single-nucleotide variants (sSNVs) occurring near population-polymorphic germline heterozygous sites (gHets), and from the number of such regions covered across the genome infers sensitivity and estimates the genome-wide rate of somatic mutation.  To detect and remove artifacts, LiRA utilizes the fact that true somatic variation appears in linkage with known, germline heterozygous variation, while artifacts do not.
 
 While analysis using LiRA is limited to regions of the genome close to gHets, its specificity is unparalleled.  In contrast to previous methods for single-cell analysis, LiRA can operate robustly on variants detected in only one cell, and as such can be used to analyze mutations and mutation rates in arbitrarily small cell populations and post-mitotic cells.
 
@@ -16,17 +16,12 @@ The following include tested versions in parenthesis when applicable; later vers
 3. bcftools (1.2)
 4. htslib (1.2.1)
 5. bedtools (2.23.0)
-<<<<<<< HEAD
 6. java (1.8)
 7. picard (2.7.1)
 8. R (3.3.1)
-=======
-6. picard (2.7.1)
-6. R (3.3.1)
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 	+ stringr
 	+ digest
-9. SHAPEIT2
+9. SHAPEIT2 (Note: Ensure that downloaded `.txt`, `.hap.gz`, and `.legend.gz` files for chromosome X are in the same directory as the other downloaded files.)
 10. SnpSift
 11. A DBSNP VCF release
 12. The 1000 genomes phase 3 integrated haplotype set
@@ -42,23 +37,16 @@ Download [SnpSift](http://snpeff.sourceforge.net/download.html)
 
 Download [picard](https://github.com/broadinstitute/picard/releases/tag/2.17.8)
 
-<<<<<<< HEAD
 Download [a DBSNP release](https://www.ncbi.nlm.nih.gov/variation/docs/human_variation_vcf/), e.g. `common_all_20170710.vcf.gz`
 
 Download [the 1000 genomes phase 3 haplotype set](https://mathgen.stats.ox.ac.uk/impute/1000GP_Phase3.html)
 
-=======
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 ## Installation
 1. Clone this repository `git clone https://github.com/parklab/LiRA`
-2. Set the `LIRA_DIR` environmental variable to the absolute path to your local copy of this repository (e.g. if it is in /home/me/LiRA, then add `export LIRA_DIR=/home/me/LiRA` to your `.bash_profile`)
-3. Ensure that samtools, bcftools, and bedtools are in your `PATH`.
-<<<<<<< HEAD
+2. Set the `LIRA_DIR` environmental variable to the absolute path to your local copy of this repository (e.g. if it is in `/home/me/LiRA`, then add `export LIRA_DIR=/home/me/LiRA` to your `.bash_profile`)
+3. Ensure that `samtools`, `bcftools`, `bedtools`, `tabix`, `java`, `R`, and `shapeit` are in your `PATH`.
 4. Edit the `global_config.txt` file to point the `SNPEFF`, `DBSNP`, `KGEN`, and `PICARD` variables to the appropriate locations.
 5. (Optional) Ensure that `lira` is in your `PATH`.
-=======
-4. Set the `PICARD` environmental variable to the absolute path to your picard jar file.
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 
 ## Inputs to LiRA (required)
   * A set of called variants in VCF format.  This call set should include both germline and prospective somatic variants and must include at least one single-cell and bulk sample (but can include more).  Running LiRA on VCF files generated over more samples will increase runtime but will provide a (potential) advantage, as it will enable viewing in all samples the evidence for all variation discovered across all samples.  At the moment, to run LiRA the input VCF must have been generated using GATK Haplotype Caller.  The variant quality score recalibration (VQSR) step in the GATK best practices workflow is unnecessary.
@@ -83,11 +71,7 @@ Note: as the examples provided here require large files not a part of this repos
   * Creates a new analysis directory and soft links to input files.
   * Example: 
 ```
-<<<<<<< HEAD
     ./lira setup --config config-example.txt
-=======
-./lira setup --config config-example.txt
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 ```
 
 2. split (single cell and bulk)
@@ -206,29 +190,3 @@ Bulk:
     ./lira plink -c bulk.txt -a 5 #won't run unless jobs from previous step don't finish in time
 ```
 
-<<<<<<< HEAD
-=======
-11. collect_power
-  * Arguments: Single cell config file, bulk config file
-  * Collect the results of (9)
-  * Example: 
-```
-./lira collect_power --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
-```
-
-12. bootstrap_germline
-  * Arguments: Single cell config file, bulk config file
-  * Select random, linked distance and size-matched germline variant sets to calibrate the relationshipbetween false positive rate and composite coverage.
-  * Example: 
-```
-./lira bootstrap_germline --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
-```
-
-13. call_ssnvs
-  * Arguments: Single cell config file, bulk config file
-  * Call sSNVs and calculate genome-wide mutation rate using the results of compare_to_bulk and bootstrap_germline.  Produces an rda file (ssnvs.<name (bulk)>.rda) containing info about all somatic SNPs.  Also produces a rate plot (rate-plot.<name (bulk)>.rda) showing the sSNV rate vs. composite. coverage and the threshold decision.
-  * Example: 
-```
-./lira call_ssnvs --single_cell_config config-example.txt --bulk_config config-example-bulk.txt
-```
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
