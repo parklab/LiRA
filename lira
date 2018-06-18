@@ -13,7 +13,6 @@ def parse_args():
 	parser['setup'] = parser['subparse'].add_parser('setup',help='Setup a new analysis.')
 	parser['setup'].add_argument('-c','--config',default=None,help='Path to a config file.',required=True)
 	parser['setup'].set_defaults(func=setup)
-<<<<<<< HEAD
 	
 	parser['split'] = parser['subparse'].add_parser('split',help='Split the genome into runnable chunks, by chromosome. Job scripts are made in ANALYSIS_PATH/job_scripts.')
 	parser['split'].add_argument('-c','--config',default=None,help='Path to a config file.',required=True)
@@ -49,7 +48,6 @@ def parse_args():
 	parser['varcall'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=False)
 	parser['varcall'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite completed analysis.  Warning: This will remove and recreate the "varcall" subdirectory.',required=False)
 	parser['varcall'].set_defaults(func=varcall)
-=======
 	parser['split_genome'] = parser['subparse'].add_parser('split_genome',help='Split the genome into runnable chunks, by chromosome. Job scripts are made in "ANALYSIS_PATH/job_scripts"')
 	parser['split_genome'].add_argument('-c','--config',default=None,help='path to a config file')
 	parser['split_genome'].add_argument('-m','--chr',default=None,help='chromosome')
@@ -105,7 +103,6 @@ def setup(args):
 
 def split_genome(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.config,"split_genome",args.chr])
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 
 	parser['joint'] = parser['subparse'].add_parser('joint',help='Analyze variants across a set of cells derived from this same VCF and compared against a common bulk sample.')
 	parser['joint'].add_argument('-l','--config_list',default=None,help='Path to a file with single-cell config files, one per line.',required=True)
@@ -135,10 +132,8 @@ def ppower(args):
 def varcall(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"varcall",str(args.bulk_config),str(args.overwrite)])
 
-<<<<<<< HEAD
 def joint(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config_list),"joint",str(args.bulk_config),str(args.directory)])
-=======
 def collect_power(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"collect_power",args.bulk_config])
 
@@ -147,7 +142,6 @@ def bootstrap_germline(args):
 
 def call_ssnvs(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"call_ssnvs",args.bulk_config])
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 
 if __name__ == "__main__":
 	args = parse_args()
