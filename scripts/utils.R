@@ -19,7 +19,7 @@ read.config.worker <- function(config.path) {
   }
   names(obj) <- config[,1]
   
-  for(n in c("SNPEFF","DBSNP","KGEN","analysis_path","reference","bam","vcf","phased_vcf")) {
+  for(n in c("SNPEFF","DBSNP","KGEN","EAGLE","EAGLE_HG19_REF","EAGLE_HG38_REF","analysis_path","reference","bam","vcf","phased_vcf")) {
     if(n %in% names(obj)) {
       tmp <- system(paste("echo ",obj[[n]],sep=""),intern=T)
       tmp.create <- F
@@ -50,6 +50,9 @@ read.config.worker <- function(config.path) {
     obj$MAX_DISTANCE_10X <- as.numeric(obj$MAX_DISTANCE_10X)
   }
   
+  if(!("reference_identifier" %in% names(obj))) {
+    obj$reference_identifier <- "hg19"
+  }
   obj$config <- cbind(names(obj),unlist(obj))
   return(obj)
 }
@@ -70,6 +73,23 @@ read.config <- function(config.path) {
     setwd(cwd)
     return(tst)
   }
+}
+
+get.chromosomes <- function(config) {
+  if(config$reference_identifier %in% c("GRCh37","hg38")) {
+    chromosomes <- paste("chr",1:22,sep="")
+    if(config$gender == "female") {
+      chromosomes <- c(chromosomes,"chrX")
+    }
+  } else if(config$reference_identifier == "hg19") {
+    chromosomes <- as.character(1:22)
+    if(config$gender == "female") {
+      chromosomes <- c(chromosomes,"X")
+    }
+  } else {
+    stop("Cannot get chromosomes.")
+  }
+  return(chromosomes)
 }
 
 reverse.complement <- function(x) {
@@ -140,7 +160,8 @@ combine.objects <- function(in.list) {
     return(in.names)
   }
   
-  test.obj <- in.list[[1]]
+  test.list <- sapply(in.list,length) == 0
+  test.obj <- in.list[!test.list][[1]]
   if(is.null(names(test.obj))) {
     access <- names(dimnames(test.obj))
     n <- lapply(access,function(x) {

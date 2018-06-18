@@ -13,7 +13,6 @@ def parse_args():
 	parser['setup'] = parser['subparse'].add_parser('setup',help='Setup a new analysis.')
 	parser['setup'].add_argument('-c','--config',default=None,help='Path to a config file.',required=True)
 	parser['setup'].set_defaults(func=setup)
-<<<<<<< HEAD
 	
 	parser['split'] = parser['subparse'].add_parser('split',help='Split the genome into runnable chunks, by chromosome. Job scripts are made in ANALYSIS_PATH/job_scripts.')
 	parser['split'].add_argument('-c','--config',default=None,help='Path to a config file.',required=True)
@@ -49,68 +48,14 @@ def parse_args():
 	parser['varcall'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=False)
 	parser['varcall'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite completed analysis.  Warning: This will remove and recreate the "varcall" subdirectory.',required=False)
 	parser['varcall'].set_defaults(func=varcall)
-=======
-	parser['split_genome'] = parser['subparse'].add_parser('split_genome',help='Split the genome into runnable chunks, by chromosome. Job scripts are made in "ANALYSIS_PATH/job_scripts"')
-	parser['split_genome'].add_argument('-c','--config',default=None,help='path to a config file')
-	parser['split_genome'].add_argument('-m','--chr',default=None,help='chromosome')
-	parser['split_genome'].set_defaults(func=split_genome)
-	parser['get_vcf_info'] = parser['subparse'].add_parser('get_vcf_info',help='Extract LiRA-relevant info from the original VCF file.')
-	parser['get_vcf_info'].add_argument('-c','--config',default=None,help='path to a config file')
-	parser['get_vcf_info'].add_argument('-m','--chr',default=None,help='chromosome')
-	parser['get_vcf_info'].set_defaults(func=get_vcf_info)
-	parser['get_alt_counts'] = parser['subparse'].add_parser('get_alt_counts',help='Get alternate allele counts over all sites in a bulk sample.  Only necessary to run for bulk samples.')
-	parser['get_alt_counts'].add_argument('-c','--config',default=None,help='path to a config file')
-	parser['get_alt_counts'].add_argument('-m','--chr',default=None,help='chromosome')
-	parser['get_alt_counts'].set_defaults(func=get_alt_counts)
-	parser['check_results'] = parser['subparse'].add_parser('check_results',help='Check results of job scripts made by "split_genome".  If not all jobs are complete, then this will print the jobs that are not done and exit.')
-	parser['check_results'].add_argument('-c','--config',default=None,help='path to a config file')
-	parser['check_results'].set_defaults(func=check_results)
-	parser['collect_results'] = parser['subparse'].add_parser('collect_results',help='Collect the results of jobs scripts made by "split_genome" by chromosome.')
-	parser['collect_results'].add_argument('-c','--config',default=None,help='path to a config file')
-	parser['collect_results'].add_argument('-m','--chr',default=None,help='chromosome')
-	parser['collect_results'].set_defaults(func=collect_results)
-	parser['compare_to_bulk'] = parser['subparse'].add_parser('compare_to_bulk',help='Compare single-cell and bulk data.  Only run after "collect_results", "get_vcf_info", and "get_alt_counts" (bulk only) have been completed.  Note that the chosen single-cell and bulk analyses must have come from the same, multisample VCF file.')
-	parser['compare_to_bulk'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['compare_to_bulk'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['compare_to_bulk'].add_argument('-m','--chr',default=None,help='chromosome')
-	parser['compare_to_bulk'].set_defaults(func=compare_to_bulk)
-	parser['collect_compare'] = parser['subparse'].add_parser('collect_compare',help='Collect results of "compare_to_bulk" across chromosomes. Also computes various counts of mutation types (phased/misphased germline/somatic mutations).')
-	parser['collect_compare'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['collect_compare'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['collect_compare'].set_defaults(func=collect_compare)
-	parser['power_jobs'] = parser['subparse'].add_parser('power_jobs',help='Create job scripts to calculate power over the genome for a single-cell to bulk comparison.')
-	parser['power_jobs'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['power_jobs'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['power_jobs'].set_defaults(func=power_jobs)
-	parser['check_power'] = parser['subparse'].add_parser('check_power',help='Check results of job scripts made by "power_jobs".  If not all jobs are complete, then this will print the jobs that are not done and exit.')
-	parser['check_power'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['check_power'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['check_power'].set_defaults(func=check_power)
-	parser['collect_power'] = parser['subparse'].add_parser('collect_power',help='Collect the results of jobs scripts made by "power_jobs".')
-	parser['collect_power'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['collect_power'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['collect_power'].set_defaults(func=collect_power)
-	parser['bootstrap_germline'] = parser['subparse'].add_parser('bootstrap_germline',help='Select random, linked distance and size-matched germline variant sets to calibrate the relationship between false positive rate and composite coverage.')
-	parser['bootstrap_germline'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['bootstrap_germline'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['bootstrap_germline'].set_defaults(func=bootstrap_germline)
-	parser['call_ssnvs'] = parser['subparse'].add_parser('call_ssnvs',help='Call ssnvs')
-	parser['call_ssnvs'].add_argument('-s','--single_cell_config',default=None,help='path to a single-cell config file')
-	parser['call_ssnvs'].add_argument('-b','--bulk_config',default=None,help='path to a bulk config file')
-	parser['call_ssnvs'].set_defaults(func=call_ssnvs)
-	return parser['argparse'].parse_args()
-
-def setup(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.config,"setup"])
-
-def split_genome(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.config,"split_genome",args.chr])
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
 
 	parser['joint'] = parser['subparse'].add_parser('joint',help='Analyze variants across a set of cells derived from this same VCF and compared against a common bulk sample.')
 	parser['joint'].add_argument('-l','--config_list',default=None,help='Path to a file with single-cell config files, one per line.',required=True)
 	parser['joint'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file.',required=True)
 	parser['joint'].add_argument('-d','--directory',default=None,help='Path to directory to store results.',required=True)
+	parser['joint'].add_argument('-u','--use_uncertain_calls',default=False,action='store_true',dest='use_uncertain_calls',help='Use uncertain calls for joint calling.')
+	parser['joint'].add_argument('-p','--use_low_power',default=False,action='store_true',dest='use_low_power',help='Use low power calls for joint calling.')
+	parser['joint'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Force overwrite (removes directory if it exists).')
 	parser['joint'].set_defaults(func=joint)
 	return parser['argparse'].parse_args()
 
@@ -135,19 +80,8 @@ def ppower(args):
 def varcall(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"varcall",str(args.bulk_config),str(args.overwrite)])
 
-<<<<<<< HEAD
 def joint(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config_list),"joint",str(args.bulk_config),str(args.directory)])
-=======
-def collect_power(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"collect_power",args.bulk_config])
-
-def bootstrap_germline(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"bootstrap_germline",args.bulk_config])
-
-def call_ssnvs(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",args.single_cell_config,"call_ssnvs",args.bulk_config])
->>>>>>> 4e1a51a0d6161c13dda49becf3f4de3c988ea8be
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config_list),"joint",str(args.bulk_config),str(args.directory),str(args.use_uncertain_calls),str(args.use_low_power),str(args.overwrite)])
 
 if __name__ == "__main__":
 	args = parse_args()

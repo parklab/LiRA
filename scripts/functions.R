@@ -3,7 +3,15 @@ setup <- function(config) {
   
   #soft link bams
   res <- out.log.cmd(paste("ln -s ",config$bam," reads.bam",sep=""))
-  res <- out.log.cmd(paste("ln -s ",config$bam,".bai reads.bam.bai",sep=""))
+  index.possibility.1 <- paste(config$bam,".bai",sep="")
+  index.possibility.2 <- gsub(".bam$",".bai",config$bam)
+  if(file.exists(index.possibility.1)) {
+    res <- out.log.cmd(paste("ln -s ",index.possibility.1," reads.bam.bai",sep=""))
+  } else if(file.exists(index.possibility.2)) {
+    res <- out.log.cmd(paste("ln -s ",index.possibility.2," reads.bam.bai",sep=""))
+  } else {
+    stop("Cannot find bam index.")
+  }
   
   #soft link vcf
   res <- out.log.cmd(paste("ln -s ",config$vcf," input_calls.vcf.gz",sep=""))
@@ -16,6 +24,87 @@ setup <- function(config) {
   
   #mark setup as complete
   out.log.cmd("touch progress/.setup")
+}
+
+annotate.and.phase.vcf <- function(chromosome) {
+  out.log(paste("Annotating and phasing calls.vcf.gz",sep=""))
+  out.log(paste("Output vcf: calls.id.vcf.gz",sep=""))
+  hg19.convert <-  F
+  if(config$phasing_software == "shapeit" & config$reference_identifier == "hg19") {
+    hg19.convert <- T
+  }
+  grch37.convert <- F
+  if(config$phasing_software == "eagle" & config$reference_identifier == "GRCh37") {
+    grch37.convert <- T
+  }
+  
+  if(config$phasing_software == "shapeit") {
+    database <- global$DBSNP
+  } else if(config$phasing_software == "eagle") {
+    if(config$reference_identifier %in% c("hg19","GRCh37")) {
+      db.dir <- global$EAGLE_HG19
+    } else if(config$reference_identifier == "hg38") {
+      db.dir <- global$EAGLE_HG38
+    }
+    database.tmp <- list.files(db.dir,pattern=paste("ALL.*chr",gsub("chr","",chromosome),"_.*vcf.gz$",sep=""),full.names = T)
+    out.log.cmd(paste("bcftools view --force-samples  -s . ",database.tmp," -O z -o db.vcf.gz && tabix -f db.vcf.gz",sep=""))
+    database <- "db.vcf.gz"
+  }
+  out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep=""))
+  
+  suppressWarnings(dir.create("phasing"))
+  setwd("phasing")
+  out.log("Make phasing input from population-polymorphic SNPs")
+  out.log.cmd(paste("bcftools view -h ../calls.id.vcf.gz",
+                    " | grep -e '##contig' -e '#CHROM' -e '##FORMAT=<ID=GT' -e '##FILTER' -e '##ALT' -e '##fileformat'",
+                    " > phasing-input.vcf",sep=""))
+  out.log.cmd(paste("bcftools view ../calls.id.vcf.gz",
+                    " | awk 'BEGIN{OFS=\"\t\"}{if($8 ~ \"LIRA_GHET\"){$8 = \".\"; $9 = \"GT\"; print $0}}'",
+                    " | tr ':' '\t'",
+                    " | cut -f 1-10",
+                    " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1'",
+                    ifelse(hg19.convert," | sed 's#^#chr#g'",""),
+                    " >> phasing-input.vcf",sep=""))
+  if(config$phasing_software == "shapeit") {
+    tmp <- paste("[.]chr",gsub("chr","",chromosome),"[.]",sep="")
+    if(chromosome == "X") {
+      tmp <- ".chrX_(non|NON)PAR."
+      sex <- data.frame(sample=config$sample,sex=ifelse(config$gender == "male",1,2))
+      write.table(x = sex,file = "sex.ped",quote = F,sep = "\t",row.names = F,col.names = F)
+      add.args <- "--chrX --input-sex sex.ped"
+    } else {
+      add.args <- ""
+    }
+    l <- list.files(global$KGEN,recursive=T,pattern=tmp,full.names = T)
+    legend <- l[grepl("legend",l)]
+    hap <- l[grepl("hap",l)]
+    map <- l[grepl("genetic_map",l)]
+    sample <- list.files(global$KGEN,recursive=T,pattern="sample",full.names=T)
+    
+    out.log("Run shapeit check")
+    out.log.cmd(paste("shapeit -check -V phasing-input.vcf -M ",map,
+                      " --input-ref ",hap," ",legend," ",sample,
+                      " --output-log shapeit-check.log",sep=""))
+    out.log("Run shapeit")
+    out.log.cmd(paste("shapeit -V phasing-input.vcf -M ",map,
+                      " --input-ref ",hap," ",legend," ",sample,
+                      " --exclude-snp shapeit-check.snp.strand.exclude -O phasing-output ",add.args,
+                      " && shapeit -convert --input-haps phasing-output --output-vcf phasing-output.vcf",sep=""))
+    if(hg19.convert) {
+      out.log("Reformat phased vcf")
+      out.log.cmd("sed -i 's#^chr##g' phasing-output.vcf && bgzip phasing-output.vcf && tabix -f phasing-output.vcf.gz")
+    }
+  } else if(config$phasing_software == "eagle") {
+    out.log("Run eagle")
+    out.log.cmd("bgzip -f phasing-input.vcf && tabix -f phasing-input.vcf.gz")
+    vcfRef <- list.files(db.dir,pattern=paste(".chr",gsub("chr","",chromosome),"_.*bcf$",sep=""),full.names = T,recursive = T)
+    if(config$reference_identifier %in% c("GRCh37","hg19")) {
+      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg19",full.names = T)
+    } else if(config$reference_identifier == "hg38") {
+      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg38",full.names = T)
+    }
+    out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
+  }
 }
 
 split <- function(config,chromosome) {
@@ -61,58 +150,8 @@ split <- function(config,chromosome) {
     out.log.cmd(paste("chmod +x ",js,sep=""))
   }
   
-  #create SnpSift annotated vcf and SHAPEIT2-phased vcf (for bulk)
-  if(config$bulk) {
-    out.log("Bulk sample procedure")
-    out.log("SnpSift annotate bulk vcf")
-    out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -tabix -name \"DBSNP_\" ",global$DBSNP," calls.vcf.gz > calls.id.vcf && bgzip calls.id.vcf && tabix -f calls.id.vcf.gz",sep=""))
-    dir.create("shapeit")
-    setwd("shapeit")
-    out.log("Make shapeit input from population-polymorphic SNPs")
-    out.log.cmd(paste("bcftools view -h ../calls.id.vcf.gz",
-                      " | grep -e '##contig' -e '#CHROM' -e '##FORMAT=<ID=GT' -e '##FILTER' -e '##ALT' -e '##fileformat'",
-                      " > shapeit.vcf",sep=""))
-    out.log.cmd(paste("bcftools view ../calls.id.vcf.gz",
-                      " | awk 'BEGIN{OFS=\"\t\"}{if($8 ~ \"DBSNP_COMMON\"){$8 = \".\"; $9 = \"GT\"; print $0}}'",
-                      " | tr ':' '\t'",
-                      " | cut -f 1-10",
-                      " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1'",
-                      ifelse(grepl("chr",chromosome),""," | sed 's#^#chr#g'"),
-                      " >> shapeit.vcf",sep=""))
-    pre <- paste(global$KGEN,"/1000GP_Phase3",sep="")
-    if(chromosome != "X") {
-      leg <- ifelse(is.na(file.info(paste(pre,"/1000GP_Phase3_chr",chromosome,".legend.gz",sep=""))$size),paste(pre,"/1000GP_Phase3_chr",chromosome,".legend",sep=""),paste(pre,"/1000GP_Phase3_chr",chromosome,".legend.gz",sep=""))
-      hap <- ifelse(is.na(file.info(paste(pre,"/1000GP_Phase3_chr",chromosome,".hap.gz",sep=""))$size),paste(pre,"/1000GP_Phase3_chr",chromosome,".hap",sep=""),paste(pre,"/1000GP_Phase3_chr",chromosome,".hap.gz",sep=""))
-      
-      out.log("Run shapeit check")
-      out.log.cmd(paste("shapeit -check -V shapeit.vcf -M ",pre,"/genetic_map_chr",chromosome,"_combined_b37.txt",
-                        " --input-ref ",hap," ",leg," ",pre,"/1000GP_Phase3.sample ",
-                        " --output-log shapeit-check.log",sep=""))
-      out.log("Run shapeit")
-      out.log.cmd(paste("shapeit -V shapeit.vcf -M ",
-                        pre,"/genetic_map_chr",chromosome,"_combined_b37.txt --input-ref ",hap," ",leg," ",pre,"/1000GP_Phase3.sample ",
-                        " --exclude-snp shapeit-check.snp.strand.exclude -O shapeit-phased",
-                        "&& shapeit -convert --input-haps shapeit-phased --output-vcf shapeit-phased.vcf",sep=""))
-    } else {
-      leg <- ifelse(is.na(file.info(paste(pre,"/1000GP_Phase3_chrX_NONPAR.legend.gz",sep=""))$size),paste(pre,"/1000GP_Phase3_chrX_NONPAR.legend",sep=""),paste(pre,"/1000GP_Phase3_chrX_NONPAR.legend.gz",sep=""))
-      hap <- ifelse(is.na(file.info(paste(pre,"/1000GP_Phase3_chrX_NONPAR.legend.hap.gz",sep=""))$size),paste(pre,"/1000GP_Phase3_chrX_NONPAR.hap",sep=""),paste(pre,"/1000GP_Phase3_chrX_NONPAR.hap.gz",sep=""))
-      
-      out.log("Run shapeit check")
-      out.log.cmd(paste("shapeit -check -V shapeit.vcf -M ",pre,"/genetic_map_chrX_nonPAR_combined_b37.txt",
-                        " --input-ref ",hap," ",leg," ",pre,"/1000GP_Phase3.sample",
-                        " --output-log shapeit-check.log --chrX",sep=""))
-      out.log("Run shapeit")
-      sex <- data.frame(sample=config$sample,sex=ifelse(config$gender == "male",1,2))
-      write.table(x = sex,file = "sex.ped",quote = F,sep = "\t",row.names = F,col.names = F)
-      out.log.cmd(paste("shapeit -V shapeit.vcf -M ",
-                        pre,"/genetic_map_chrX_nonPAR_combined_b37.txt",
-                        " --input-ref ",hap," ",leg," ",pre,"/1000GP_Phase3.sample ",
-                        " --exclude-snp shapeit-check.snp.strand.exclude -O shapeit-phased --chrX --input-sex sex.ped",
-                        "&& shapeit -convert --input-haps shapeit-phased --output-vcf shapeit-phased.vcf",sep=""))
-    }
-    out.log("Reformat phased vcf")
-    out.log.cmd("sed -i 's#^chr##g' shapeit-phased.vcf && bgzip shapeit-phased.vcf && tabix -f shapeit-phased.vcf.gz")
-  }
+  #create SnpSift annotated vcf and phased vcf (for bulk)
+  annotate.and.phase.vcf(chromosome)
   setwd(config$analysis_path)
   
   out.log(paste("Done with chromosome ",chromosome,sep=""))
@@ -124,7 +163,7 @@ local.region.function <- function(config,work.dir) {
   
   wrapper <- function() {
     out.log(paste("Getting pileup by read (output: ",work.dir,"/sites.by.read.txt)",sep=""))
-    out <- out.log.cmd(paste("$LIRA_DIR/scripts/linkage.py --bam ",config$analysis_path,"/reads.bam --fasta ",config$reference," --bed sites.bed > sites.by.read.txt",sep=""))
+    out <- out.log.cmd(paste("$LIRA_DIR/scripts/linkage.py --bam ",config$analysis_path,"/reads.bam --fasta ",config$reference_file," --bed sites.bed > sites.by.read.txt",sep=""))
     
     if(as.numeric(system(paste("wc -l sites.by.read.txt | tr ' ' '\t' | cut -f 1",sep=""),intern=T)) == 0) {
       linkage <- data.frame(RR=numeric(0),RV=numeric(0),VR=numeric(0),VV=numeric(0))
@@ -247,8 +286,13 @@ local.region.function <- function(config,work.dir) {
   }
   
   get_vcf_info <- function() {
+    if(config$phasing_software == "eagle") {
+      caf.col <- "%INFO/DBSNP_AF"
+    } else if(config$phasing_software == "shapeit") {
+      caf.col <- "%INFO/DBSNP_CAF"
+    }
     cmds <- c(paste("bcftools query -i 'TYPE=\"snp\" & N_ALT=1' -s ",config$sample," -R targets -f '",c("%CHROM;%POS;%REF;%ALT\\t%ID",
-                                                                                                        "%INFO/DBSNP_CAF",
+                                                                                                        ifelse(config$bulk,caf.col,"."),
                                                                                                         "[%GT]",
                                                                                                         "[%AD]\\t[%GQ]",
                                                                                                         "%CHROM\\t%POS"),"\\n' ",paste(config$analysis_path,"/",system("cat sites.bed | cut -f 1 | uniq",intern=T),"/",ifelse(config$bulk,"calls.id.vcf.gz","calls.vcf.gz"),sep=""),
@@ -257,7 +301,7 @@ local.region.function <- function(config,work.dir) {
                       "> .tmp3",
                       " | tr ',.' '\\t0' > .tmp4",
                       " | awk '{print $1\"\\t\"$2-2\"\\t\"$2+1}' > .tmp5"),sep="",collapse=" && "),
-              paste("bedtools getfasta -fi ",config$reference," -bed .tmp5 -fo - | grep -v '>' | tr 'actg' 'ACTG' > .tmp6",sep=""),
+              paste("bedtools getfasta -fi ",config$reference_file," -bed .tmp5 -fo - | grep -v '>' | tr 'actg' 'ACTG' > .tmp6",sep=""),
               "paste .tmp1 .tmp2 .tmp3 .tmp4 .tmp6 > .tmp7",
               "rm .tmp1",
               "rm .tmp2",
@@ -295,7 +339,7 @@ local.region.function <- function(config,work.dir) {
       names(site.frame)[names(site.frame) == "single.cell.gt"] <- "bulk.gt"
       names(site.frame)[names(site.frame) == "single.cell.gq"] <- "bulk.gq"
       #load phasing
-      dumb <- system(paste("bcftools query -R targets -f '%CHROM;%POS;%REF;%ALT\t[%GT]\n' ../../shapeit/shapeit-phased.vcf.gz 2> /dev/null | grep -e '0|1' -e '1|0' > phasing.txt",sep=""))
+      dumb <- system(paste("bcftools query -R targets -f '%CHROM;%POS;%REF;%ALT\t[%GT]\n' ../../phasing/phasing-output.vcf.gz 2> /dev/null | grep -e '0|1' -e '1|0' > phasing.txt",sep=""))
       phasing <- try(read.table("phasing.txt",sep="\t"),silent = T)
       if(class(phasing) != "try-error") {
         vec <- numeric(nrow(phasing))
@@ -692,7 +736,7 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   mutations.tmp$cell <- config$name
   mutations.tmp$bulk.analysis <- bulk.config$name
   mutations.tmp <- mutations.tmp[mutations.tmp$single.cell.alt > 0,]
-  tmp <- table(mutations.tmp$misphased,mutations.tmp$somatic.proper)
+  tmp <- table(c(mutations.tmp$misphased,T,F,T,F),c(mutations.tmp$somatic.proper,T,T,F,F)) - 1
   summary <- data.frame(analysis.name=config$name,bulk.analysis=bulk.config$name,onek=onek,germline.phased=tmp[1,1],germline.misphased=tmp[2,1],somatic.phased=tmp[1,2],somatic.misphased=tmp[2,2])
   save(summary,file=paste("summary.",bulk.config$name,".rda",sep=""))
   setwd(config$analysis_path)
@@ -949,7 +993,7 @@ local.power.function <- function(config,bulk.config,work.dir) {
     context.bed[,3] <- context.bed[,3] + 1
     
     write.table(context.bed,file="context.bed",quote=F,row.names = F,col.names = F,sep="\t")
-    context <- system(paste("bedtools getfasta -fi ",config$reference," -bed context.bed -fo - | grep -v '>'",sep=""),intern=T)
+    context <- system(paste("bedtools getfasta -fi ",config$reference_file," -bed context.bed -fo - | grep -v '>'",sep=""),intern=T)
     context[substr(context,2,2) %in% c("A","G")] <- reverse.complement(context[substr(context,2,2) %in% c("A","G")])
     context.bed[,"context"] <- context
     
@@ -979,10 +1023,8 @@ varcall <- function(config,bulk.config,overwrite) {
     out.log("Overwriting...")
     out.log.cmd(paste("rm -r ",dir," 2> /dev/null",sep=""))
   }
-  chromosomes <- as.character(1:22)
-  if(config$gender == "female") {
-    chromosomes <- c(chromosomes,"X")
-  }
+  chromosomes <- get.chromosomes(config)
+  
   done <- unlist(lapply(chromosomes,function(chromosome){
     tmp <- paste(chromosome,"_",list.files(paste(config$analysis_path,"/",chromosome,"/jobs",sep="")),sep="")
     done <- file.exists(paste(config$analysis_path,"/progress/.power_",bulk.config$name,"_",tmp,sep=""))
@@ -1028,19 +1070,19 @@ varcall <- function(config,bulk.config,overwrite) {
   
   #Combine mutation and data files
   mutations <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/mutations.",bulk.config$name,".rda",sep="")); return(mutations)}))
-  save(mutations,file=paste("mutations.",bulk.config$name,".rda",sep=""))
+  save(mutations,file="mutations.rda")
   
   candidate.somatic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/candidate.somatic.",bulk.config$name,".rda",sep="")); names(candidate.somatic)[names(candidate.somatic) == "composite_coverage"] <- "stat"; return(candidate.somatic)}))
-  save(candidate.somatic,file=paste("candidate.somatic.",bulk.config$name,".rda",sep=""))
+  save(candidate.somatic,file="candidate.somatic.rda")
   
   all.somatic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/all.somatic.",bulk.config$name,".rda",sep="")); names(all.somatic)[names(all.somatic) == "composite_coverage"] <- "stat"; return(all.somatic)}))
-  save(all.somatic,file=paste("all.somatic.",bulk.config$name,".rda",sep=""))
+  save(all.somatic,file="all.somatic.rda")
   
   data <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/data.",bulk.config$name,".rda",sep="")); return(data)}))
-  save(data,file=paste("data.",bulk.config$name,".rda",sep=""))
+  save(data,file="data.rda")
   
   all.mosaic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/all.mosaic.",bulk.config$name,".rda",sep="")); return(all.mosaic)}))
-  save(all.mosaic,file=paste("all.mosaic.",bulk.config$name,".rda",sep=""))
+  save(all.mosaic,file="all.mosaic.rda")
   
   #Make modified powers
   #Rate of spurious observation of somatic alternate allele in bulk
@@ -1062,7 +1104,15 @@ varcall <- function(config,bulk.config,overwrite) {
   powers.mod <- powers[names(key.rate)]
   overall.rate.observed <- (1 - bulk.alt.rate) * (1 - key.rate)
   powers.mod <- powers.mod * overall.rate.observed
-  save(powers.mod,file=paste("powers.mod.",bulk.config$name,".rda",sep=""))
+  powers.mod[powers.mod == 0] <- 1
+  save(powers.mod,file="powers.mod.rda")
+  
+  tmp <- seq(from=2,by=1,to=max(candidate.somatic$stat))
+  vec <- rep(1,length(tmp))
+  names(vec) <- tmp
+  powers.mod <- powers.mod[names(powers.mod) %in% names(vec)]
+  vec[names(powers.mod)] <- powers.mod
+  powers.mod <- vec
   
   #Bootstrap germline
   suppressWarnings(dir.create("bootstrap"))
@@ -1115,12 +1165,12 @@ varcall <- function(config,bulk.config,overwrite) {
         item <- new[[n]][sample(1:nrow(new[[n]]),size=distances[x],replace=F),]
       })
       booty <- do.call(rbind,tmp)
-      save(booty,file=paste(i,".",thresh,".",bulk.config$name,".rda",sep=""))
+      save(booty,file=paste(i,".",thresh,".rda",sep=""))
     }
   }
   dumb <- local(onek,candidate.somatic)
   m <- max(candidate.somatic$stat)
-  bootstrap <- colMeans(do.call(rbind,lapply(1:global$BOOTSTRAP_REPLICATES,function(x){load(paste(x,".",thresh,".",bulk.config$name,".rda",sep="")); return((table(c(booty$stat,2:m)) - 1)[as.character(2:m)])})))
+  bootstrap <- colMeans(do.call(rbind,lapply(1:global$BOOTSTRAP_REPLICATES,function(x){load(paste(x,".",thresh,".rda",sep="")); return((table(c(booty$stat,2:m)) - 1)[as.character(2:m)])})))
   save(bootstrap,file="bootstrap.rda")
   setwd("..")
   
@@ -1131,7 +1181,6 @@ varcall <- function(config,bulk.config,overwrite) {
                        power=powers.mod[as.numeric(names(powers.mod)) %in% names(bootstrap)])
   result$control.rate <- 1e9*((result$bootstrap + 0.5)/(result$power + 0.5))
   result$observed.ssnv.rate <- 1e9 * ((result$observed.ssnv.count+ 0.5)/(result$power + 0.5))
-  
   tmp <- sapply(seq_along(result$observed.ssnv.rate),function(x) {
     qbeta(p = c(0.005,0.995),shape1 = 0.5 + result$observed.ssnv.count[x],shape2 = 0.5 + result$power[x] - result$observed.ssnv.count[x]) * 1e9
   })
@@ -1227,8 +1276,9 @@ varcall <- function(config,bulk.config,overwrite) {
   summary[["\tUpper bound (98%): "]] <- round(obj$somatic.rate.ub)
   summary[["Composite coverage threshold: "]] <- obj$stat_threshold
   
+  
   #Make rate plot
-  pdf(paste("rate-plot.",bulk.config$name,".pdf",sep=""))
+  pdf("rate-plot.pdf")
   xlim <- c(1,(max(obj$data$stat.val)+0.5)*1.05)
   ylim <- c(0,max(obj$data$observed.ssnv.rate.ub)*1.2)
   plot(x = -10,y = -10,xlim=xlim,ylim=ylim,bty='n',xlab="",ylab="",xaxt='n',yaxt='n')
@@ -1281,7 +1331,7 @@ varcall <- function(config,bulk.config,overwrite) {
   par(xpd=F)
   dev.off()
   
-  save(obj,file=paste("call.rate_fit.",bulk.config$name,".rda",sep=""))
+  save(obj,file="call.rate_fit.rda")
   
   #Annotate final variant list
   all.somatic$phred.quality <- NA
@@ -1317,7 +1367,6 @@ varcall <- function(config,bulk.config,overwrite) {
   }
   unlinked.somatic <- unlinked.somatic[,colnames(ssnvs)]
   ssnvs <- rbind(ssnvs,unlinked.somatic)
-  save(ssnvs,file=paste("ssnvs.",bulk.config$name,".rda",sep=""))
   
   ssnvs$status[ssnvs$status == "call"] <- "pass"
   mosaic <- ssnvs[!is.na(ssnvs$mosaic.stat),]
@@ -1343,11 +1392,6 @@ varcall <- function(config,bulk.config,overwrite) {
   
   ssnvs <- ssnvs[is.na(ssnvs$mosaic.stat),]
   ssnvs <- rbind(ssnvs,mosaic,onek)
-  
-  chromosomes <- as.character(1:22)
-  if(config$gender == "female") {
-    chromosomes <- c(chromosomes,"X")
-  }
   
   n <- nrow(ssnvs)
   fmt.gt <- rep("GT",n)
@@ -1410,10 +1454,10 @@ varcall <- function(config,bulk.config,overwrite) {
   quality.lines <- as.character(round(ssnvs$phred.quality))
   quality.lines[is.na(ssnvs$phred.quality)] <- "."
   
-  vcf.out <- paste("../out.",bulk.config$name,".vcf",sep="")
+  vcf.out <- "out.vcf"
   writeLines(c("##fileformat=VCFv4.0",
                paste("##fileDate=",format(Sys.time(),"%Y%m%d"),sep=""),
-               paste("##reference=",config$reference,sep=""),
+               paste("##reference=",config$reference_file,sep=""),
                paste("##source=lira varcall -s ",args[1]," -b ",args[3],sep=""),
                sapply(chromosomes,function(x){paste("##contig=<ID=",x,">",sep="")}),
                "##FILTER=<ID=UNLINKED,Description=\"No spaning reads\">",
@@ -1439,22 +1483,214 @@ varcall <- function(config,bulk.config,overwrite) {
                paste(ssnvs$chromosome,ssnvs$pos,ssnvs$id,ssnvs$ref,ssnvs$alt,quality.lines,toupper(ssnvs$status),".",format.lines,sample.lines,sep="\t")),con=vcf.out)
   out.log.cmd(paste("cat ",vcf.out," | grep '#' > tmp.vcf && cat ",vcf.out," | grep -v '#' | sort -V >> tmp.vcf && mv tmp.vcf ",vcf.out," && bgzip -f ",vcf.out," && tabix -f ",vcf.out,".gz",sep = ""))
   ssnvs <- ssnvs[order(ssnvs$chromosome,ssnvs$pos),]
-  save(ssnvs,file=paste("out.",bulk.config$name,".rda",sep=""))
+  save(ssnvs,file=paste("out.rda",sep=""))
+  
+  summary[["Total passing sSNVs: "]] <- sum(ssnvs$status %in% c("pass","mosaic;pass"))
+  if(config$gender == "male") {
+    summary[["Estimated total # of sSNVs: "]] <- round((3.122 + 3.227) * obj$somatic.rate)
+  } else if (cnofig$gender == "female") {
+    summary[["Estimated total # of sSNVs: "]] <- round((3.227  * 2) * obj$somatic.rate)
+  }
+  summary[["Estimated sensitivity: "]] <- summary[["Total passing sSNVs: "]]/summary[["Estimated total # of sSNVs: "]]
+  summary[["Estimated FPR: "]] <- sprintf("%0.2f",mean(ssnvs$fp.prob[ssnvs$status == "pass"]))
   
   summary.lines <- paste(names(summary),summary,sep="")
-  writeLines(summary.lines,con=paste("../summary.",bulk.config$name,".txt",sep=""))
+  writeLines(summary.lines,con="summary.txt")
   
-  bed1 <- paste("powers.one.",bulk.config$name,".bed",sep="")
-  out.log.cmd(paste("cat ",bed1," | awk '{if($4 >= ",obj$stat.threshold,") print}' | cut -f 1,2,3 | bedtools merge -d 0 -i - > ../",bed1,sep=""))
-  bed2 <- paste("powers.two.",bulk.config$name,".bed",sep="")
-  out.log.cmd(paste("cat ",bed2," | awk '{if($4 >= ",obj$stat.threshold,") print}' | cut -f 1,2,3 | bedtools merge -d 0 -i - > ../",bed2,sep=""))
-  out.log.cmd(paste("bedtools multiinter -i ../",bed1," ../",bed2,"  | cut -f 1,2,3,4 > ../powers.",bulk.config$name,".bed",sep=""))
+  out.log.cmd(paste("cat powers.one.bed | awk '{if($4 >= ",obj$stat_threshold,") print}' | cut -f 1,2,3 | bedtools merge -d 0 -i - > powered.regions.one.bed",sep=""))
+  out.log.cmd(paste("cat powers.two.bed | awk '{if($4 >= ",obj$stat_threshold,") print}' | cut -f 1,2,3 | bedtools merge -d 0 -i - > powered.regions.two.bed",sep=""))
+  out.log.cmd("bedtools multiinter -i powered.regions.one.bed powered.regions.two.bed  | cut -f 1,2,3,4 > powered.regions.bed")
   
   
   progress.file <- paste(config$analysis_path,"/progress/.varcall_",bulk.config$name,sep="")
   out.log.cmd(paste("touch ",progress.file,sep=""))
 }
 
-joint <- function(config.list,bulk.config,out.directory) {
+joint <- function(single.cell.configs,bulk.config,out.directory,use.uncertain.calls,use.low.power,overwrite) {
+  if(overwrite) {
+    system(paste("rm -r ",out.directory," 2> /dev/null",sep=""))
+  }
+  suppressWarnings(dir.create(out.directory))
+  setwd(out.directory)
+  search <- "PASS"
+  if(use.uncertain.calls) {
+    search <- c(search,"UNCERTAIN_CALL")
+  }
+  if(use.low.power) {
+    search <- c(search,"LOW_POWER")
+  }
+  search.string <- paste("grep -v '#' | grep ",paste(" -e ",search,sep="",collapse=" "),sep="")
+  system("rm variants.txt 2> /dev/null")
+  for(i in seq_along(single.cell.configs)) {
+    vcf <- paste(single.cell.configs[[i]]$analysis_path,"/varcall_",bulk.config$name,"/out.vcf.gz",sep="")
+    out.log.cmd(paste("bcftools query -i 'ID == \".\"' -f '%CHROM;%POS;%REF;%ALT\\t[%O]\\t[%G]\\t%FILTER\\n' ",vcf," | ",search.string," | cut -f 1,2,3 >> variants.txt",sep=""))
+    out.log.cmd(paste("bcftools query -i 'FORMAT/AB == 0 && FORMAT/RB > 0 && FORMAT/AS > 0 && ID == \".\"' -f '%CHROM;%POS;%REF;%ALT\\t[%O]\\t[%G]\\t%FILTER\\n' ",vcf," | cut -f 1,2,3 >> variants.txt",sep=""))
+  }
+  out.log.cmd("cat variants.txt | sort | uniq > tmp.txt && mv tmp.txt variants.txt")
+  variants <- read.table("variants.txt")
+  names(variants) <- c("sSNV","orientation","linked_gHet")
+  variants <- unique(variants)
+  save(variants,file="variants.rda")
   
+  bash.commands <- paste("Rscript --vanilla $LIRA_DIR/scripts/main.R ",sapply(single.cell.configs,function(x){x$analysis_path}),"/config.txt joint_subset ",bulk.config$analysis_path,"/config.txt ",getwd(),sep="")
+  job.names <- paste(digest(list(bash.commands,date())),seq_along(bash.commands),sep="_")
+  job.loop(bash.commands,job.names)
+  
+  all.ssnvs <- lapply(single.cell.configs,function(x){
+    load(paste(x$name,".rda",sep=""))
+    return(ssnvs)
+  })
+  
+  data <- lapply(all.ssnvs,function(x){
+    obj <- list()
+    call <- rep(NA,nrow(x))
+    call[x$single.cell.alt > 0] <- 1
+    call[x$single.cell.ref > 0 & x$single.cell.alt == 0] <- 0
+    obj$call <- call
+    
+    tmp <- x[x$status %in% tolower(search),]
+    obj$varlist <- rownames(tmp)
+    return(obj)
+  })
+  
+  rescue.mat <- sapply(data,function(x){
+    return(x$call)
+  })
+  rownames(rescue.mat) <- all.ssnvs[[1]]$var_id
+  colnames(rescue.mat) <- sapply(single.cell.configs,function(x){x$name})
+  rescue.mat <- t(rescue.mat)
+  
+  varlist <- unique(unlist(lapply(data,function(x){
+    return(x$varlist)
+  })))
+  combined <- do.call(rbind,lapply(single.cell.configs,function(x) {
+    load(paste(x$name,".rda",sep=""))
+    cell <- x$name
+    
+    x <- ssnvs
+    x <- x[varlist,]
+    return(x)
+  }))
+  combined <- base::split(combined,combined$var_id)
+  save(combined,file="combined.rda")
+  save(rescue.mat,file="rescue.mat.rda")
+  
+  # load("combined.rda")
+  combined <- combined[sapply(combined,function(x){any(x$hc.bulk > 0)})]
+  combined <- combined[sapply(combined,function(x){sum(x$null_haplotype > 0) > 1})]
+  combined <- combined[sapply(combined,function(x){sum(x$var_haplotype > 0 & x$null_haplotype == 0) > 1})]
+  combined <- combined[sapply(combined,function(x){sum(x$single.cell.alt >= 1) > 1})]
+  combined <- combined[sapply(combined,function(x){sum(grepl(paste(tolower(search),collapse="|"),x$status)) > sum(grepl("filtered_fp",x$status))})]
+
+  combined <- lapply(combined,function(x){x$joint_call <- NA; x$joint_call[x$single.cell.alt > 0] <- 1; x$joint_call[x$null_haplotype > 0] <- 0; x$joint_call[x$null_haplotype > 0 & x$var_hapotype > 0] <- NA; return(x)})
+
+  mat <- sapply(combined,function(x){x$joint_call})
+  ind <- apply(mat,2,function(x){var(x,na.rm=T) != 0})
+  mat <- mat[,ind]
+  rownames(mat) <- combined[[1]]$cell
+  
+  rescue.mat <- rescue.mat[,(!colnames(rescue.mat) %in% colnames(mat))]
+  ind <- apply(rescue.mat,2,function(x){sum(x == 1,na.rm=T) > 1 & sum(x == 0,na.rm = T) > 1})
+  rescue.mat <- rescue.mat[,ind]
+  
+  mat.to.plot <- rbind(mat,rep(0,ncol(mat)))
+  mat.to.plot <- cbind(mat.to.plot,rep(0,nrow(mat.to.plot)))
+  heatmap(-mat.to.plot,scale="none")
+  
+  n <- ncol(rescue.mat)
+  getbg <- function(n) {
+    tmp.mat <- mat
+    tmp.rescue.mat <- rescue.mat
+    
+    tmp.mat[is.na(tmp.mat)] <- -2
+    tmp.mat[tmp.mat == 0] <- -1
+    tmp.mat[tmp.mat == -2] <- 0
+    
+    tmp.rescue.mat[is.na(tmp.rescue.mat)] <- -2
+    tmp.rescue.mat[tmp.rescue.mat == 0] <- -1
+    tmp.rescue.mat[tmp.rescue.mat == -2] <- 0
+    
+    true.statistic <- t(tmp.mat) %*% tmp.rescue.mat
+    for(i in 2:n) {
+      tst <- t(tmp.mat) %*%  tmp.rescue.mat[sample(1:nrow(tmp.rescue.mat),size=nrow(tmp.rescue.mat),replace = F),]
+      if(i == 1) {
+        lim <- tst
+      } else {
+        lim[tst > lim] <- tst[tst > lim]
+      }
+      keep.tst <- !apply(true.statistic <= lim,2,all)
+      tmp.rescue.mat <- tmp.rescue.mat[,keep.tst]
+      lim <- lim[,keep.tst]
+      true.statistic <- true.statistic[,keep.tst]
+      print(ncol(lim))
+    }
+    
+
+    n.keep <- unlist(lapply(1:nrow(true.statistic),function(x){names(which(true.statistic[x,] > lim[x]))}))
+    return(n.keep)
+  }
+  
+  mat <- cbind(mat,rescue.mat[,getbg(n)])
+  mat.to.plot <- rbind(mat,rep(0,ncol(mat)))
+  mat.to.plot <- cbind(mat.to.plot,rep(0,nrow(mat.to.plot)))
+  heatmap(-mat.to.plot,scale="none")
+  
+  dev.off()
+}
+
+joint.subset <- function(config,bulk.config,work.dir) {
+  setwd(work.dir)
+  load("variants.rda")
+  chromosomes <- get.chromosomes(config)
+  load(paste(config$analysis_path,"/varcall_",bulk.config$name,"/out.rda",sep=""))
+  
+  ghet <- ssnvs[ssnvs$onek.bulk.het,]
+  ado <- sum(ghet$single.cell.alt == 0 | ghet$single.cell.ref == 0)/nrow(ghet)
+  save(ado,file=paste(config$name,".ado.rda",sep=""))
+  
+  sites <- variants$sSNV
+
+  linkage <- do.call(rbind,lapply(chromosomes,function(x){load(paste(config$analysis_path,"/",x,"/compare/single.cell.linkage.rda",sep="")); return(single.cell.linkage)}))
+  tmp <- rbind(data.frame(site1=variants$sSNV,site2=variants$linked_gHet,somatic.first=T,cis=variants$orientation == "cis",pair_id=paste(variants$sSNV,"~",variants$linked_gHet,sep=""),somatic.variant=variants$sSNV,row=1:nrow(variants)),
+               data.frame(site1=variants$linked_gHet,site2=variants$sSNV,somatic.first=F,cis=variants$orientation == "cis",pair_id=paste(variants$linked_gHet,"~",variants$sSNV,sep=""),somatic.variant=variants$sSNV,row=1:nrow(variants)))
+  tmp <- tmp[tmp$pair_id %in% linkage$pair_id,]
+  rownames(linkage) <- linkage$pair_id
+  for(hap in c("RR","RV","VR","VV")) {
+    tmp[,hap] <- linkage[tmp$pair_id,hap]
+  }
+  
+  tmp$null_haplotype <- ""
+  tmp$var_haplotype <- ""
+  
+  ind <- tmp$somatic.first & tmp$cis
+  tmp$null_haplotype[ind] <- tmp$RV[ind]
+  tmp$var_haplotype[ind] <- tmp$VV[ind]
+  
+  ind <- tmp$somatic.first & !tmp$cis
+  tmp$null_haplotype[ind] <- tmp$RR[ind]
+  tmp$var_haplotype[ind] <- tmp$VR[ind]
+  
+  ind <- !tmp$somatic.first & tmp$cis
+  tmp$null_haplotype[ind] <- tmp$VR[ind]
+  tmp$var_haplotype[ind] <- tmp$VV[ind]
+  
+  ind <- !tmp$somatic.first & !tmp$cis
+  tmp$null_haplotype[ind] <- tmp$RR[ind]
+  tmp$var_haplotype[ind] <- tmp$RV[ind]
+  
+  tmp$null_haplotype <- as.numeric(tmp$null_haplotype)
+  tmp$var_haplotype <- as.numeric(tmp$var_haplotype)
+  
+  tmp <- tmp[,c("somatic.variant","null_haplotype","var_haplotype")]
+  tmp2 <- data.frame(do.call(rbind,lapply(base::split(tmp[,c("null_haplotype","var_haplotype")],tmp$somatic.variant),colSums)))
+  
+  ssnvs <- ssnvs[rownames(ssnvs) %in% sites,]
+  ssnvs$null_haplotype <- 0
+  ssnvs$var_haplotype <- 0
+  ssnvs[rownames(tmp2),"null_haplotype"] <- tmp2$null_haplotype
+  ssnvs[rownames(tmp2),"var_haplotype"] <- tmp2$var_haplotype
+  ssnvs$var_id <- rownames(ssnvs)
+  ssnvs$cell <- config$name
+  rownames(ssnvs) <- NULL
+  save(ssnvs,file=paste(config$name,".rda",sep=""))
 }
