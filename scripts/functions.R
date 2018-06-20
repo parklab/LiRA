@@ -45,6 +45,8 @@ annotate.and.phase.vcf <- function(chromosome) {
       db.dir <- global$EAGLE_HG19
     } else if(config$reference_identifier == "hg38") {
       db.dir <- global$EAGLE_HG38
+    } else if (config$phasing_software == "crossbred_mouse") {
+      database <- global$DBSNP
     }
     database.tmp <- list.files(db.dir,pattern=paste("ALL.*chr",gsub("chr","",chromosome),"_.*vcf.gz$",sep=""),full.names = T)
     out.log.cmd(paste("bcftools view --force-samples  -s . ",database.tmp," -O z -o db.vcf.gz && tabix -f db.vcf.gz",sep=""))
@@ -104,6 +106,8 @@ annotate.and.phase.vcf <- function(chromosome) {
       map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg38",full.names = T)
     }
     out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
+  } else if (config$phasing_software == "crossbred_mouse") {
+    out.log("No phasing software to be run--VCF for heterozygous crossbred mouse is expected")
   }
 }
 
