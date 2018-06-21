@@ -45,12 +45,12 @@ annotate.and.phase.vcf <- function(chromosome) {
       db.dir <- global$EAGLE_HG19
     } else if(config$reference_identifier == "hg38") {
       db.dir <- global$EAGLE_HG38
-    } else if (config$phasing_software == "crossbred_mouse") {
-      database <- global$DBSNP
     }
     database.tmp <- list.files(db.dir,pattern=paste("ALL.*chr",gsub("chr","",chromosome),"_.*vcf.gz$",sep=""),full.names = T)
     out.log.cmd(paste("bcftools view --force-samples  -s . ",database.tmp," -O z -o db.vcf.gz && tabix -f db.vcf.gz",sep=""))
     database <- "db.vcf.gz"
+  } else if (config$phasing_software == "crossbred_mouse") {
+    database <- global$DBSNP
   }
   out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep=""))
   

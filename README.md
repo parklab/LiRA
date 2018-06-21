@@ -12,6 +12,7 @@ The following include tested versions in parenthesis when applicable; later vers
 1. python (2.7.12)
 	+ argparse
 	+ os
+	+ pysam
 2. samtools (1.2)
 3. bcftools (1.2)
 4. htslib (1.2.1)

@@ -5,11 +5,10 @@
 SNPEFF	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/snpEff
 
 #Path to DBSNP database
-#DBSNP	/n/data1/hms/dbmi/park/cbohrson/common_all_20160601.vcf.gz
-DBSNP	/n/data1/hms/dbmi/park/splitseq_analysis/vcf_contig_rename/mgp.v5.merged.snps_all.dbSNP142.contig_rename_2.vcf.gz
+DBSNP	/n/data1/hms/dbmi/park/cbohrson/common_all_20160601.vcf.gz
 
 #Path to downloaded 1000 genomes haplotype reference panel
-#KGEN	/n/data1/hms/dbmi/park/simon_chu/projects/data/1000G
+KGEN	/n/data1/hms/dbmi/park/simon_chu/projects/data/1000G
 
 #Path to picard JAR file
 PICARD	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/picard.jar
@@ -37,5 +36,3 @@ PARALLEL_SCRIPT	slurm.R
 
 #Number of sampling replicates to use for CONTROL_METHOD
 BOOTSTRAP_REPLICATES	100
-
-reference_identifier	mm10
