@@ -20,14 +20,24 @@ fastafile = pysam.FastaFile(args.fasta)
 with open(args.bed) as bed:
 	reader = csv.reader(bed, delimiter="\t")
 	sites = list(reader)
-
+	
 for site in sites:
 	start = int(site[1])
 	end = int(site[2])
+	# print(start) # this prints
 	pileup = bamfile.pileup(site[0],start,end,stepper="all",max_depth=500000)
 	for pileupColumn in pileup:
 		for pileupRead in pileupColumn.pileups:
-			if (pileupColumn.pos >= start) and (pileupColumn.pos < end) and (not pileupRead.is_refskip) and (pileupRead.alignment.mapping_quality == 60) and (pileupRead.alignment.is_proper_pair):
+			
+			# print(pileupRead.is_refskip)
+			# print(pileupRead.alignment.is_proper_pair)
+			#print(pileupRead.alignment.mapping_quality)
+			# print('----------')
+			
+			#print(pileupColumn.pos >= start,pileupColumn.pos < end,pileupRead.is_refskip)
+			
+			if (pileupColumn.pos >= start) and (pileupColumn.pos < end) and (not pileupRead.is_refskip) and (pileupRead.alignment.mapping_quality > 0): #and (pileupRead.alignment.mapping_quality == 60): #and (pileupRead.alignment.is_proper_pair):
+				#print(pileupRead.alignment.cigartuples)
 				if(len(pileupRead.alignment.cigartuples) == 1):
 					if(pileupRead.is_del):
 						base = "*"

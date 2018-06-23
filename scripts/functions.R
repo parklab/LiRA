@@ -289,10 +289,13 @@ local.region.function <- function(config,work.dir) {
     get_alt_counts()
   }
   
+  print(config$phasing_software)
   get_vcf_info <- function() {
     if(config$phasing_software == "eagle") {
       caf.col <- "%INFO/DBSNP_AF"
     } else if(config$phasing_software == "shapeit") {
+      caf.col <- "%INFO/DBSNP_CAF"
+    } else if (config$phasing_software == "crossbred_mouse") {
       caf.col <- "%INFO/DBSNP_CAF"
     }
     cmds <- c(paste("bcftools query -i 'TYPE=\"snp\" & N_ALT=1' -s ",config$sample," -R targets -f '",c("%CHROM;%POS;%REF;%ALT\\t%ID",
@@ -410,6 +413,7 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
         }
       }
     }
+    print(paste("Getting linkage information from",jobs.dir))
     linkage <- do.call(rbind,lapply(paste(jobs.dir,"/",j,"/linkage.rda",sep=""),function(x){load(x); return(linkage)}))
     linkage$site1 <- gsub("([^~]*)~([^~]*)","\\1",rownames(linkage))
     linkage$site2 <- gsub("([^~]*)~([^~]*)","\\2",rownames(linkage))
@@ -429,8 +433,21 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   
   #Load single cell info
   out.log("Loading single cell info")
+  out.log("ctrl1")
+  #### NEED TO FIGURE OUT WHY THE JOBS EXIT AT THIS POINT
+  print(config)
+  
+  out.log("Loading bulk info")
+  print("config:")
+  print(config)
+  print("bulk config")
+  print(bulk.config)
+  
   obj <- process.local(config,paste("Jobs still undone from plink.  See ",config$analysis_path,"/",chromosome,"/compare/log.txt",sep=""))
+  out.log(obj)
+  out.log("ctrl2")
   single.cell.linkage <- obj$linkage
+  out.log(single.cell.linkage)
   save(single.cell.linkage,file="single.cell.linkage.rda")
   
   single.cell.vcf.info <- obj$vcf.info
@@ -438,6 +455,10 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
 
   #Load bulk info
   out.log("Loading bulk info")
+  print("config:")
+  print(config)
+  print("bulk config")
+  print(bulk.config)
   obj <- process.local(bulk.config,paste("Bulk jobs still undone from plink.  See ",config$analysis_path,"/",chromosome,"/compare/log.txt",sep=""))
   bulk.linkage <- obj$linkage
   save(bulk.linkage,file="bulk.linkage.rda")

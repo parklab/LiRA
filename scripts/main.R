@@ -129,6 +129,7 @@ if(cmd == "plink") {
     scripts <- scripts[!ind]
   }
   tot <- length(scripts)
+  print(tot)
   cmds <- paste(getwd(),"/job_scripts/",scripts,sep="")
   batches <- batcher(cmds,batch.size)
   if(tot > 0) {
