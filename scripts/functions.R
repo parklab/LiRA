@@ -52,8 +52,8 @@ annotate.and.phase.vcf <- function(chromosome) {
   } else if (config$phasing_software == "crossbred_mouse") {
     database <- global$DBSNP
   }
-  out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep=""))
-  
+  out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep="")) # this step is where variants called from the cell are annotated to indicate whcih variant calls are known SNPs from the SNP database
+
   suppressWarnings(dir.create("phasing"))
   setwd("phasing")
   out.log("Make phasing input from population-polymorphic SNPs")
@@ -66,7 +66,7 @@ annotate.and.phase.vcf <- function(chromosome) {
                     " | cut -f 1-10",
                     " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1'",
                     ifelse(hg19.convert," | sed 's#^#chr#g'",""),
-                    " >> phasing-input.vcf",sep=""))
+                    " >> phasing-input.vcf",sep="")) # this step is meant to obtain the variant calls that are known SNPs and are genotyped within the cell. 
   if(config$phasing_software == "shapeit") {
     tmp <- paste("[.]chr",gsub("chr","",chromosome),"[.]",sep="")
     if(chromosome == "X") {
@@ -76,8 +76,8 @@ annotate.and.phase.vcf <- function(chromosome) {
       add.args <- "--chrX --input-sex sex.ped"
     } else {
       add.args <- ""
-    }
-    l <- list.files(global$KGEN,recursive=T,pattern=tmp,full.names = T)
+    } # meant to annotate the X in case the sample is from a female
+    l <- list.files(global$KGEN,recursive=T,pattern=tmp,full.names = T) # list files in the haplotype reference panel. Meant for phasing analysis. Don't use for crossbred organisms
     legend <- l[grepl("legend",l)]
     hap <- l[grepl("hap",l)]
     map <- l[grepl("genetic_map",l)]
@@ -108,15 +108,22 @@ annotate.and.phase.vcf <- function(chromosome) {
     out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
   } else if (config$phasing_software == "crossbred_mouse") {
     out.log("No phasing software to be run--VCF for heterozygous crossbred mouse is expected")
+    # don't run any phasing analysis; how should the phasing-output.vcf be formatted?
     # this needs a phasing-output.vcf.gz for the mouse; otherwise, we cannot perform bulk phasing!
     #out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
     # out.log.cmd(paste("shapeit -V phasing-input.vcf -M ",map,
     #                   " --input-ref ",hap," ",legend," ",sample,
     #                   " --exclude-snp shapeit-check.snp.strand.exclude -O phasing-output ",add.args,
     #                   " && shapeit -convert --input-haps phasing-output --output-vcf phasing-output.vcf",sep=""))
+    
     out.log.cmd("cp phasing-input.vcf phasing-output.temp.vcf")
-    out.log.cmd("sed 's#/#|#g' phasing-output.temp.vcf > phasing-output.vcf")
+    out.log.cmd(paste("sed 's#/#|#g' phasing-output.temp.vcf |",
+                      "awk 'BEGIN {OFS=\"\t\"} {if(NF == 10){$7 = \"PASS\"; print $0} else {print $0}}' > phasing-output.vcf")) # just to make sure that the PASS is present as it should be in phasing-output.vcf
+    
+    # awk 'BEGIN {FS=OFS="\t"} {if(NF == 10) {$7 = "PASS"; print $0} else {print $0}}'
+    
     out.log.cmd("bgzip phasing-output.vcf && tabix -f phasing-output.vcf.gz")
+    # does the exclusion of KGEN affect the phasing-output.vcf.gz? No, it does not  
   }
 }
 
@@ -145,7 +152,7 @@ split <- function(config,chromosome) {
   cum.reads <- cumsum(coverage[,4])
   
   #assign regions to jobs targeting READS_TARGET
-  run.assignment <- ceiling(cum.reads/global$READS_TARGET)
+  run.assignment <- ceiling(cum.reads/global$READS_TARGET) # split the jobs based on the number of reads covering the sites in sites.bed.
   jobs <- base::split(coverage[,1:3],run.assignment)
   dir.create("jobs")
   for(j in seq_along(jobs)) {
@@ -200,7 +207,7 @@ local.region.function <- function(config,work.dir) {
       linkage <- data.frame(RR=numeric(0),RV=numeric(0),VR=numeric(0),VV=numeric(0))
       save(linkage,file=paste("linkage.rda",sep=""))
       return(0)
-    }
+    } # if no results were found (i.e no sites), then save an empty linkage.rda
     
     #Save work
     save(results,file=paste("results.rda",sep=""))
@@ -298,14 +305,16 @@ local.region.function <- function(config,work.dir) {
     get_alt_counts()
   }
   
-  print(config$phasing_software)
+  # print(config$phasing_software)
+  
   get_vcf_info <- function() {
     if(config$phasing_software == "eagle") {
       caf.col <- "%INFO/DBSNP_AF"
     } else if(config$phasing_software == "shapeit") {
       caf.col <- "%INFO/DBSNP_CAF"
     } else if (config$phasing_software == "crossbred_mouse") {
-      caf.col <- "%INFO/DBSNP_CAF"
+      #caf.col <- "%INFO/DBSNP_CAF" # the code behind the lack of pop.ref.freq, I think, is here
+      caf.col <- "%INFO/AF" # check with craig if this is valid # for a crossbred mouse, the AF of a standard heterozygous SNP in the whole population should be 0.5. Can't be more or less!
     }
     cmds <- c(paste("bcftools query -i 'TYPE=\"snp\" & N_ALT=1' -s ",config$sample," -R targets -f '",c("%CHROM;%POS;%REF;%ALT\\t%ID",
                                                                                                         ifelse(config$bulk,caf.col,"."),
@@ -319,16 +328,43 @@ local.region.function <- function(config,work.dir) {
                       " | awk '{print $1\"\\t\"$2-2\"\\t\"$2+1}' > .tmp5"),sep="",collapse=" && "),
               paste("bedtools getfasta -fi ",config$reference_file," -bed .tmp5 -fo - | grep -v '>' | tr 'actg' 'ACTG' > .tmp6",sep=""),
               "paste .tmp1 .tmp2 .tmp3 .tmp4 .tmp6 > .tmp7",
-              "rm .tmp1",
-              "rm .tmp2",
-              "rm .tmp3",
-              "rm .tmp4",
-              "rm .tmp5",
-              "rm .tmp6",
               "echo \"site\tid\tpop.ref.freq\tgenotype\tref\talt\tgq\tcontext\" > vcf-info.txt",
               "cat .tmp7 | sed -E 's#^([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t*$#\\1\\t\\2\\t\\3\\t\\4\\t\\5\\t\\6\\t0\\t\\7#g' >> vcf-info.txt",
               "rm .tmp7")
+    # when creating .tmp2, all entries seem to be "."'s and thus converted to 1. 
+    # what does the .tmp2 for the BULK look like? the sc pop.ref.freq is set to the one calculated for bulk. That's important***
+    ### I FOUND THE ERROR! 
+    # the calls.id.vcf.gz file does NOT have a DBSNP_CAF entry in the info tab. For the crossbred mouse, AF is sufficent. 
+    # vvv3@compute-a-16-164:~/parklab/parklab/splitseq_analysis/variant_calls_100cns/lira_calls/test2/bulk_splitseq_126cns/chr1/jobs/1$ bcftools query -i 'TYPE="snp" & N_ALT=1' -s 1 -R targets -f '%INFO/DBSNP_CAF\n' /n/data1/hms/dbmi/park/splitseq_analysis/variant_calls_100cns/lira_calls/test2/bulk_splitseq_126cns/chr1/calls.id.vcf.gz| tr ',' '\t' | cut -f 1 | sed 's#^[.]$#1#g'
+    # Error: no such tag defined in the VCF header: INFO/DBSNP_CAF
+    
+    # cmds <- c(paste("bcftools query -i 'TYPE=\"snp\" & N_ALT=1' -s ",config$sample," -R targets -f '",c("%CHROM;%POS;%REF;%ALT\\t%ID",
+    #                                                                                                     ifelse(config$bulk,caf.col,"."),
+    #                                                                                                     "[%GT]",
+    #                                                                                                     "[%AD]\\t[%GQ]",
+    #                                                                                                     "%CHROM\\t%POS"),"\\n' ",paste(config$analysis_path,"/",system("cat sites.bed | cut -f 1 | uniq",intern=T),"/",ifelse(config$bulk,"calls.id.vcf.gz","calls.vcf.gz"),sep=""),
+    #                 c("> .tmp1",
+    #                   "| tr ',' '\\t' | cut -f 1 | sed 's#^[.]$#1#g' > .tmp2",
+    #                   "> .tmp3",
+    #                   " | tr ',.' '\\t0' > .tmp4",
+    #                   " | awk '{print $1\"\\t\"$2-2\"\\t\"$2+1}' > .tmp5"),sep="",collapse=" && "),
+    #           paste("bedtools getfasta -fi ",config$reference_file," -bed .tmp5 -fo - | grep -v '>' | tr 'actg' 'ACTG' > .tmp6",sep=""),
+    #           "paste .tmp1 .tmp2 .tmp3 .tmp4 .tmp6 > .tmp7",
+    #           "rm .tmp1",
+    #           "rm .tmp2",
+    #           "rm .tmp3",
+    #           "rm .tmp4",
+    #           "rm .tmp5",
+    #           "rm .tmp6",
+    #           "echo \"site\tid\tpop.ref.freq\tgenotype\tref\talt\tgq\tcontext\" > vcf-info.txt",
+    #           "cat .tmp7 | sed -E 's#^([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t([^\\t]*)\\t*$#\\1\\t\\2\\t\\3\\t\\4\\t\\5\\t\\6\\t0\\t\\7#g' >> vcf-info.txt",
+    #           "rm .tmp7")
+    
     # why is pop.ref.freq empty? For this cell, many of the targets do not have genotype information available. 
+    # the pop.ref.freq field is 1 for all entries in single-cell. They get converted to the pop.ref.freq in the bulk sample. 
+    # so, examine the pop.ref.freq in the bulk sample's in the bulk sample. 
+    
+    # check the creation of calls.id.vcf.gz
     cmd <- paste(cmds,collapse=" && ")
     out.log.cmd(cmd)
     site.frame <- read.table("vcf-info.txt",sep="\t",header=T)
@@ -357,7 +393,7 @@ local.region.function <- function(config,work.dir) {
       names(site.frame)[names(site.frame) == "single.cell.gq"] <- "bulk.gq"
       #load phasing
       dumb <- system(paste("bcftools query -R targets -f '%CHROM;%POS;%REF;%ALT\t[%GT]\n' ../../phasing/phasing-output.vcf.gz 2> /dev/null | grep -e '0|1' -e '1|0' > phasing.txt",sep=""))
-      phasing <- try(read.table("phasing.txt",sep="\t"),silent = T) # is phasing.txt empty? # yes! it appears that phasing.txt has not even been read!
+      phasing <- try(read.table("phasing.txt",sep="\t"),silent = T) # is phasing.txt empty? # yes! it appears that phasing.txt has not even been read! #This has been fixed!
       print(phasing)
       if(class(phasing) != "try-error") {
         vec <- numeric(nrow(phasing))
@@ -483,7 +519,7 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   print("make a site-specific table")
   site.frame <- single.cell.vcf.info
   site.frame$id <- bulk.vcf.info$id
-  site.frame$pop.ref.freq <- bulk.vcf.info$pop.ref.freq
+  site.frame$pop.ref.freq <- bulk.vcf.info$pop.ref.freq # this line is important!!!
   
   #pull bulk info
   print("pull bulk info---------")
@@ -499,14 +535,18 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   #somatic candidates: bulk.gt == "0/0" or bulk.gt == "./."
   print("only look for linkage near bulk het sites in 1KG")
   site.frame$in.linkage <- rownames(site.frame) %in% c(single.cell.linkage$site1,single.cell.linkage$site2)
-  site.frame$onek.bulk.het <- (site.frame$pop.ref.freq != 1) & (site.frame$bulk.gt == "0/1")
+  site.frame$onek.bulk.het <- (site.frame$pop.ref.freq != 1) & (site.frame$bulk.gt == "0/1") # (site.frame$bulk.gt == "0/1") # this step removes all of the one.bulk.het sites
+  # removing the pop.ref.freq requirement lets the script go to completion. Why?
+  print("values of pop.ref.freq")
   print(table(site.frame$pop.ref.freq))
+  print("bulk genotypes at the single-cell sites")
   print(table(site.frame$bulk.gt))
+  print("is the site heterozygous in the bulk? Based on OneK")
   print(table(site.frame$onek.bulk.het))
   site.frame$somatic <- (site.frame$bulk.gt == "0/0")|(site.frame$bulk.gt == "./.")
   
-  print("onekbulk")
-  onek.bulk.sites <- rownames(site.frame)[site.frame$onek.bulk.het] # this turns up empty
+  onek.bulk.sites <- rownames(site.frame)[site.frame$onek.bulk.het] # this turns up empty #ERROR! # fix this issue or at least find out why all of the one.bulk.het's are false
+  print("onekbulk sites")
   print(head(onek.bulk.sites))
   somatic.sites <- rownames(site.frame)[site.frame$somatic]
   print("somatic.sites")
