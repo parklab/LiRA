@@ -86,6 +86,11 @@ get.chromosomes <- function(config) {
     if(config$gender == "female") {
       chromosomes <- c(chromosomes,"X")
     }
+  } else if(config$reference_identifier == "mm10") {
+    chromosomes <- paste("chr",1:19,sep="")
+    if(config$gender == "female") {
+      chromosomes <- c(chromosomes,"chrX")
+    }
   } else {
     stop("Cannot get chromosomes.")
   }
