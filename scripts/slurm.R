@@ -32,6 +32,7 @@ submit.jobs <- function(bash.commands, job.ids) {
   if(all(grepl("Submitted batch job",result))) {
     return(T)
   } else {
+    print(result)
     return(F)
   }
 }

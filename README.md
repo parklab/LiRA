@@ -3,7 +3,7 @@ LiRA (**Li**nked **R**ead **A**nalysis) is a computational tool for removing amp
 
 While analysis using LiRA is limited to regions of the genome close to gHets, its specificity is unparalleled.  In contrast to previous methods for single-cell analysis, LiRA can operate robustly on variants detected in only one cell, and as such can be used to analyze mutations and mutation rates in arbitrarily small cell populations and post-mitotic cells.
 
-For more information, please see our [bioarchive paper](https://doi.org/10.1101/211169) and [our related paper in science](https://doi.org/10.1126/science.aao4426) examining variation in mutational burden in single neurons across age and tissue type, and in progeroid disorders.
+For more information, please see our [paper in nature genetics](https://doi.org/10.1038/s41588-019-0366-2) and [our related paper in science](https://doi.org/10.1126/science.aao4426) examining variation in mutational burden in single neurons across age and tissue type, and in progeroid disorders.
 
 ## Requirements
 The following include tested versions in parenthesis when applicable; later versions are likely to still work.  These instructions are designed to enable use of LiRA on human sequencing data aligned to NCBI build 37 (hg19).  While it is possible to analyze other organisms or other genome builds, doing so will require an appropriate haplotype set alternative and set of common SNPs (as opposed to the human polymorphisms provided in the DBSNP release and the haplotype sets provided by the 1000 genomes phase 3 release, respectively).
@@ -21,7 +21,7 @@ The following include tested versions in parenthesis when applicable; later vers
 8. R (3.3.1)
 	+ stringr
 	+ digest
-9. SHAPEIT2 (Note: Ensure that downloaded `.txt`, `.hap.gz`, and `.legend.gz` files for chromosome X are in the same directory as the other downloaded files.)
+9. SHAPEIT2 (Note: Ensure that downloaded `.txt`, `.hap.gz`, and `.legend.gz` files for chromosome X are in the same directory as the other downloaded files.) or EAGLE
 10. SnpSift
 11. A DBSNP VCF release
 12. The 1000 genomes phase 3 integrated haplotype set
@@ -31,7 +31,7 @@ Download [samtools, bcftools, and htslib](https://github.com/samtools)
 
 Download [bedtools](https://github.com/arq5x/bedtools2/releases)
 
-Download [SHAPEIT2](https://mathgen.stats.ox.ac.uk/genetics_software/shapeit/shapeit.html#download)
+Download [SHAPEIT2](https://mathgen.stats.ox.ac.uk/genetics_software/shapeit/shapeit.html#download) or [EAGLE](https://data.broadinstitute.org/alkesgroup/Eagle/)
 
 Download [SnpSift](http://snpeff.sourceforge.net/download.html)
 
@@ -44,8 +44,8 @@ Download [the 1000 genomes phase 3 haplotype set](https://mathgen.stats.ox.ac.uk
 ## Installation
 1. Clone this repository `git clone https://github.com/parklab/LiRA`
 2. Set the `LIRA_DIR` environmental variable to the absolute path to your local copy of this repository (e.g. if it is in `/home/me/LiRA`, then add `export LIRA_DIR=/home/me/LiRA` to your `.bash_profile`)
-3. Ensure that `samtools`, `bcftools`, `bedtools`, `tabix`, `java`, `R`, and `shapeit` are in your `PATH`.
-4. Edit the `global_config.txt` file to point the `SNPEFF`, `DBSNP`, `KGEN`, and `PICARD` variables to the appropriate locations.
+3. Ensure that `samtools`, `bcftools`, `bedtools`, `tabix`, `java`, `R`, and `shapeit` (if applicable) are in your `PATH`.
+4. Edit the `global_config.txt` file to point the `SNPEFF`, `DBSNP`, `KGEN`, `PICARD`, and (if applicable) `EAGLE`, `EAGLE_HG19_REF`, and `EAGLE_HG38_REF` variables to the appropriate locations.
 5. (Optional) Ensure that `lira` is in your `PATH`.
 
 ## Inputs to LiRA (required)
@@ -120,13 +120,13 @@ Note: as the examples provided here require large files not a part of this repos
   * Each script analyzes the power LiRA has to detect somatic variation over different regions of the genome.
   * Example:
 ```
-		./lira plink --single_cell_config config-example.txt --bulk_config config-example-bulk.txt 
+		./lira ppower --single_cell_config config-example.txt --bulk_config config-example-bulk.txt 
 		
     #Run jobs in parallel for all chromosomes, overwriting existing results
-		./lira plink --single_cell_config config-example.txt --bulk_config config-example-bulk.txt --overwrite
+		./lira ppower --single_cell_config config-example.txt --bulk_config config-example-bulk.txt --overwrite
 		
 		#Run jobs in parallel for all chromosomes, overwriting existing results and using a smaller batch size for jobs.
-		./lira plink --single_cell_config config-example.txt --bulk_config config-example-bulk.txt --batch_size 5 --overwrite
+		./lira ppower --single_cell_config config-example.txt --bulk_config config-example-bulk.txt --batch_size 5 --overwrite
 ```
 
 6. varcall

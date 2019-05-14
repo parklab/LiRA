@@ -1,26 +1,33 @@
 #Name for this analysis.
-name	1465-2-C1
+name	4643_MDA_1
 
 #Path to working directory that will store the results of this analysis
-analysis_path	1465-2-C1
+analysis_path	4643_MDA_1
 
 #Path to the reference genome to which the relevant BAM file is aligned. HG19 currently supported.
-reference	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
+reference_file	/n/data1/hms/dbmi/park/cbohrson/human_g1k_v37_decoy.fasta
 
 #Path to BAM file with index in the same directory (*.bam.bai)
-bam	/n/data1/hms/dbmi/park/cbohrson/subsampled/1465-2-C1.bam
+bam	/n/data1/bch/genetics/walsh-park/data/NormalSingleCell/Alignment/20160404_NYgenome_realignment/4643/4643_MDA_1.bam
 
 #Path to compressed VCF file with calls for a sample of the same name as 'sample' below, and with calls for the bulk sample to be used for comparison.  Must be compressed using bgzip and indexed with tabix (*.vcf.gz.tbi)
 vcf	/n/data1/hms/dbmi/park/alison/Single_cell_joint/20170324_single_cells_HC.vcf.gz
 
 #Gender of the sample.  Females' X chromosomes are analyzed and males' are not.
-gender	male
+gender	female
 
 #Name of relevant sample in bam file
-sample	1465-2-C1
+sample	4643_MDA_1
 
-#Name of individual of origin.
-individual	1465
 
 #Indicates that this is not a bulk sample
 bulk	F
+
+#Identifier for the reference file used.  Options currently are GRCh37, hg19, or hg38
+reference_identifier	hg19
+
+#Haplotype phasing software to use.  Options are 'shapeit' or 'eagle'
+phasing_software	eagle
+
+#Limit analysis to particular chromosomes (comma separated list); leave blank if interested in all.
+only_chromosomes	21,22

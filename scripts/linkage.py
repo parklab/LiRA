@@ -1,12 +1,4 @@
-#! /home/clb36/parkhome/installed/local/bin/python2.7
-#samtools_view.py     Bernardo  3mar2016  v. 5mar  5PM
-#requires python2.7  
-#usage: samtools_view.py   --bam reads.bam  --fasta reference_genomic2.fasta  --chr ctg2_left_rc --start 177718 --end 177722
-#output:
-#ctg2_left_rc    177718  A       ctg2_100x_PB_L_3933_1_0 11659   A
-#ctg2_left_rc    177718  A       ctg2_100x_PB_L_5164_1_0 None    *
-#code based on: http://pysam.readthedocs.org/en/latest/
-#argparse info: http://www.cyberciti.biz/faq/python-command-line-arguments-argv-example/
+#!/usr/bin/env python
 import pysam
 import argparse
 import csv

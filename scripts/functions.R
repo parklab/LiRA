@@ -26,87 +26,6 @@ setup <- function(config) {
   out.log.cmd("touch progress/.setup")
 }
 
-annotate.and.phase.vcf <- function(chromosome) {
-  out.log(paste("Annotating and phasing calls.vcf.gz",sep=""))
-  out.log(paste("Output vcf: calls.id.vcf.gz",sep=""))
-  hg19.convert <-  F
-  if(config$phasing_software == "shapeit" & config$reference_identifier == "hg19") {
-    hg19.convert <- T
-  }
-  grch37.convert <- F
-  if(config$phasing_software == "eagle" & config$reference_identifier == "GRCh37") {
-    grch37.convert <- T
-  }
-  
-  if(config$phasing_software == "shapeit") {
-    database <- global$DBSNP
-  } else if(config$phasing_software == "eagle") {
-    if(config$reference_identifier %in% c("hg19","GRCh37")) {
-      db.dir <- global$EAGLE_HG19
-    } else if(config$reference_identifier == "hg38") {
-      db.dir <- global$EAGLE_HG38
-    }
-    database.tmp <- list.files(db.dir,pattern=paste("ALL.*chr",gsub("chr","",chromosome),"_.*vcf.gz$",sep=""),full.names = T)
-    out.log.cmd(paste("bcftools view --force-samples  -s . ",database.tmp," -O z -o db.vcf.gz && tabix -f db.vcf.gz",sep=""))
-    database <- "db.vcf.gz"
-  }
-  out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep=""))
-  
-  suppressWarnings(dir.create("phasing"))
-  setwd("phasing")
-  out.log("Make phasing input from population-polymorphic SNPs")
-  out.log.cmd(paste("bcftools view -h ../calls.id.vcf.gz",
-                    " | grep -e '##contig' -e '#CHROM' -e '##FORMAT=<ID=GT' -e '##FILTER' -e '##ALT' -e '##fileformat'",
-                    " > phasing-input.vcf",sep=""))
-  out.log.cmd(paste("bcftools view ../calls.id.vcf.gz",
-                    " | awk 'BEGIN{OFS=\"\t\"}{if($8 ~ \"LIRA_GHET\"){$8 = \".\"; $9 = \"GT\"; print $0}}'",
-                    " | tr ':' '\t'",
-                    " | cut -f 1-10",
-                    " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1'",
-                    ifelse(hg19.convert," | sed 's#^#chr#g'",""),
-                    " >> phasing-input.vcf",sep=""))
-  if(config$phasing_software == "shapeit") {
-    tmp <- paste("[.]chr",gsub("chr","",chromosome),"[.]",sep="")
-    if(chromosome == "X") {
-      tmp <- ".chrX_(non|NON)PAR."
-      sex <- data.frame(sample=config$sample,sex=ifelse(config$gender == "male",1,2))
-      write.table(x = sex,file = "sex.ped",quote = F,sep = "\t",row.names = F,col.names = F)
-      add.args <- "--chrX --input-sex sex.ped"
-    } else {
-      add.args <- ""
-    }
-    l <- list.files(global$KGEN,recursive=T,pattern=tmp,full.names = T)
-    legend <- l[grepl("legend",l)]
-    hap <- l[grepl("hap",l)]
-    map <- l[grepl("genetic_map",l)]
-    sample <- list.files(global$KGEN,recursive=T,pattern="sample",full.names=T)
-    
-    out.log("Run shapeit check")
-    out.log.cmd(paste("shapeit -check -V phasing-input.vcf -M ",map,
-                      " --input-ref ",hap," ",legend," ",sample,
-                      " --output-log shapeit-check.log",sep=""))
-    out.log("Run shapeit")
-    out.log.cmd(paste("shapeit -V phasing-input.vcf -M ",map,
-                      " --input-ref ",hap," ",legend," ",sample,
-                      " --exclude-snp shapeit-check.snp.strand.exclude -O phasing-output ",add.args,
-                      " && shapeit -convert --input-haps phasing-output --output-vcf phasing-output.vcf",sep=""))
-    if(hg19.convert) {
-      out.log("Reformat phased vcf")
-      out.log.cmd("sed -i 's#^chr##g' phasing-output.vcf && bgzip phasing-output.vcf && tabix -f phasing-output.vcf.gz")
-    }
-  } else if(config$phasing_software == "eagle") {
-    out.log("Run eagle")
-    out.log.cmd("bgzip -f phasing-input.vcf && tabix -f phasing-input.vcf.gz")
-    vcfRef <- list.files(db.dir,pattern=paste(".chr",gsub("chr","",chromosome),"_.*bcf$",sep=""),full.names = T,recursive = T)
-    if(config$reference_identifier %in% c("GRCh37","hg19")) {
-      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg19",full.names = T)
-    } else if(config$reference_identifier == "hg38") {
-      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg38",full.names = T)
-    }
-    out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
-  }
-}
-
 split <- function(config,chromosome) {
   out.log(paste("Starting analysis of chromosome ",chromosome,sep=""))
   system(paste("rm -r ",chromosome," 2> /dev/null",sep=""))
@@ -329,9 +248,12 @@ local.region.function <- function(config,work.dir) {
     names(site.frame)[names(site.frame) == "gq"] <- "single.cell.gq"
     
     if(config$bulk) {
-      site.frame$context <- paste(site.frame$context,">",site.frame$alt,sep="")
       change <- substr(site.frame$context,2,2) %in% c("G","A")
       site.frame$context[change] <- reverse.complement(site.frame$context[change])
+      tmp.alt <- site.frame$alt
+      tmp.alt[change] <- reverse.complement(tmp.alt[change])
+      site.frame$context <- paste(site.frame$context,">",tmp.alt,sep="")
+      
       site.frame$pop.ref.freq[is.na(site.frame$pop.ref.freq)] <- 1
       
       names(site.frame)[names(site.frame) == "single.cell.ref"] <- "bulk.ref"
@@ -398,11 +320,18 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
         stop(undone.message)
       } else {
         while(any(!done)) {
-          out.log(paste("Waiting for ",bulk.config$name," plink to finish...",sep=""))
-          out.log("Undone:")
-          sapply(j[!done],function(x){out.log(paste(local.config$analysis_path,"/job_scripts/",chromosome,"_",x,".sh",sep=""))})
-          done <- file.exists(done.files)
-          Sys.sleep(120)
+          if(!local.config$bulk) {
+            out.log(paste(local.config$name," plink unfinished.",sep=""))
+            out.log("Undone:")
+            sapply(j[!done],function(x){out.log(paste(local.config$analysis_path,"/job_scripts/",chromosome,"_",x,".sh",sep=""))})
+            stop("")
+          } else{
+            out.log(paste("Waiting for ",local.config$name," plink to finish...",sep=""))
+            out.log("Undone:")
+            sapply(j[!done],function(x){out.log(paste(local.config$analysis_path,"/job_scripts/",chromosome,"_",x,".sh",sep=""))})
+            done <- file.exists(done.files)
+            Sys.sleep(120)
+          }
         }
       }
     }
@@ -452,6 +381,7 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   site.frame[,"bulk.ref"] <- bulk.vcf.info$bulk.ref
   site.frame[,"bulk.alt"] <- bulk.vcf.info$bulk.alt
   site.frame[,"bulk.phasing"] <-  bulk.vcf.info$bulk.phasing
+  site.frame[,"context"] <- bulk.vcf.info$context
   site.frame$bulk.phasing[site.frame$bulk.phasing == 0] <- NA
   
   #only look for linkage near bulk het sites in 1KG
@@ -1026,7 +956,8 @@ varcall <- function(config,bulk.config,overwrite) {
   chromosomes <- get.chromosomes(config)
   
   done <- unlist(lapply(chromosomes,function(chromosome){
-    tmp <- paste(chromosome,"_",list.files(paste(config$analysis_path,"/",chromosome,"/jobs",sep="")),sep="")
+    l <- list.files(paste(config$analysis_path,"/",chromosome,"/jobs",sep=""))
+    tmp <- paste(chromosome,"_",l,sep="")
     done <- file.exists(paste(config$analysis_path,"/progress/.power_",bulk.config$name,"_",tmp,sep=""))
     names(done) <- paste(config$analysis_path,"/power.",bulk.config$name,"_job_scripts/",tmp,".sh",sep="")
     return(done)
@@ -1229,9 +1160,15 @@ varcall <- function(config,bulk.config,overwrite) {
   obj$nlm.fit <- nlm.fit
   obj$nlm.fit.bg <- nlm.fit.bg
   obj$error.rate.bg <- t(apply(nlm.fit.bg,1,function(x){x[1] * result$error.rate}))
+  if(nrow(obj$error.rate.bg) == 1) {
+    obj$error.rate.bg <- t(obj$error.rate.bg)
+  }
   colnames(obj$error.rate.bg) <- obj$data$stat.val
   
   obj$control.rate.bg <- t(apply(nlm.fit.bg,1,function(x){x[2] * result$control.rate}))
+  if(nrow(obj$control.rate.bg) == 1) {
+    obj$control.rate.bg <- t(obj$control.rate.bg)
+  }
   colnames(obj$control.rate.bg) <- obj$data$stat.val
   
   obj$fit.bg <- obj$error.rate.bg + obj$control.rate.bg
@@ -1488,7 +1425,7 @@ varcall <- function(config,bulk.config,overwrite) {
   summary[["Total passing sSNVs: "]] <- sum(ssnvs$status %in% c("pass","mosaic;pass"))
   if(config$gender == "male") {
     summary[["Estimated total # of sSNVs: "]] <- round((3.122 + 3.227) * obj$somatic.rate)
-  } else if (cnofig$gender == "female") {
+  } else if (config$gender == "female") {
     summary[["Estimated total # of sSNVs: "]] <- round((3.227  * 2) * obj$somatic.rate)
   }
   summary[["Estimated sensitivity: "]] <- summary[["Total passing sSNVs: "]]/summary[["Estimated total # of sSNVs: "]]
@@ -1577,9 +1514,9 @@ joint <- function(single.cell.configs,bulk.config,out.directory,use.uncertain.ca
   
   # load("combined.rda")
   combined <- combined[sapply(combined,function(x){any(x$hc.bulk > 0)})]
-  combined <- combined[sapply(combined,function(x){sum(x$null_haplotype > 0) > 1})]
+  combined <- combined[sapply(combined,function(x){sum(x$null_haplotype > 0 & x$var_haplotype ==- 0) > 1})]
   combined <- combined[sapply(combined,function(x){sum(x$var_haplotype > 0 & x$null_haplotype == 0) > 1})]
-  combined <- combined[sapply(combined,function(x){sum(x$single.cell.alt >= 1) > 1})]
+  #combined <- combined[sapply(combined,function(x){sum(x$single.cell.alt >= 1) > 1})]
   combined <- combined[sapply(combined,function(x){sum(grepl(paste(tolower(search),collapse="|"),x$status)) > sum(grepl("filtered_fp",x$status))})]
 
   combined <- lapply(combined,function(x){x$joint_call <- NA; x$joint_call[x$single.cell.alt > 0] <- 1; x$joint_call[x$null_haplotype > 0] <- 0; x$joint_call[x$null_haplotype > 0 & x$var_hapotype > 0] <- NA; return(x)})

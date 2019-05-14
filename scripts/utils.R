@@ -89,6 +89,10 @@ get.chromosomes <- function(config) {
   } else {
     stop("Cannot get chromosomes.")
   }
+  if(!is.null(config$only_chromosomes)) {
+    oc <- strsplit(config$only_chromosomes,",")[[1]]
+    chromosomes <- chromosomes[chromosomes %in% oc]
+  }
   return(chromosomes)
 }
 
@@ -176,4 +180,95 @@ combine.objects <- function(in.list) {
     }
     return(vec)
   }
+}
+
+annotate.and.phase.vcf <- function(chromosome) {
+  out.log(paste("Annotating and phasing calls.vcf.gz",sep=""))
+  out.log(paste("Output vcf: calls.id.vcf.gz",sep=""))
+  hg19.convert <-  F
+  if(config$phasing_software == "shapeit" & config$reference_identifier == "hg19") {
+    hg19.convert <- T
+  }
+  grch37.convert <- F
+  if(config$phasing_software == "eagle" & config$reference_identifier == "GRCh37") {
+    grch37.convert <- T
+  }
+  
+  if(config$phasing_software == "shapeit") {
+    database <- global$DBSNP
+  } else if(config$phasing_software == "eagle") {
+    if(config$reference_identifier %in% c("hg19","GRCh37")) {
+      db.dir <- global$EAGLE_HG19
+    } else if(config$reference_identifier == "hg38") {
+      db.dir <- global$EAGLE_HG38
+    }
+    database.tmp <- list.files(db.dir,pattern=paste("ALL.*chr",gsub("chr","",chromosome),"[_.].*vcf.gz$",sep=""),full.names = T)
+    out.log.cmd(paste("bcftools view --force-samples  -s . ",database.tmp," -O z -o db.vcf.gz && tabix -f db.vcf.gz",sep=""))
+    database <- "db.vcf.gz"
+  }
+  out.log.cmd(paste("java -jar ",global$SNPEFF,"/SnpSift.jar annotate -exists LIRA_GHET -tabix -name \"DBSNP_\" ",database," calls.vcf.gz > calls.id.vcf && bgzip -f calls.id.vcf &&  tabix -f calls.id.vcf.gz",sep=""))
+  
+  suppressWarnings(dir.create("phasing"))
+  setwd("phasing")
+  out.log("Make phasing input from population-polymorphic SNPs")
+  out.log.cmd(paste("bcftools view -h ../calls.id.vcf.gz",
+                    " | grep -e '##contig' -e '#CHROM' -e '##FORMAT=<ID=GT' -e '##FILTER' -e '##ALT' -e '##fileformat'",
+                    " > phasing-input.vcf",sep=""))
+  out.log.cmd(paste("bcftools view ../calls.id.vcf.gz",
+                    " | awk 'BEGIN{OFS=\"\t\"}{if($8 ~ \"LIRA_GHET\"){$8 = \".\"; $9 = \"GT\"; print $0}}'",
+                    " | tr ':' '\t'",
+                    " | cut -f 1-10",
+                    " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1' -e '0|1' -e '1|1'",
+                    " | sed 's#1/0#0/1#g'",
+                    " | sed 's#0|1#0/1#g'",
+                    " | sed 's#1|0#0/1#g'",
+                    ifelse(hg19.convert," | sed 's#^#chr#g'",""),
+                    " >> phasing-input.vcf",sep=""))
+  if(config$phasing_software == "shapeit") {
+    tmp <- paste("[.]chr",gsub("chr","",chromosome),"[.]",sep="")
+    if(chromosome == "X") {
+      tmp <- ".chrX_(non|NON)PAR."
+      sex <- data.frame(sample=config$sample,sex=ifelse(config$gender == "male",1,2))
+      write.table(x = sex,file = "sex.ped",quote = F,sep = "\t",row.names = F,col.names = F)
+      add.args <- "--chrX --input-sex sex.ped"
+    } else {
+      add.args <- ""
+    }
+    l <- list.files(global$KGEN,recursive=T,pattern=tmp,full.names = T)
+    legend <- l[grepl("legend",l)]
+    hap <- l[grepl("hap",l)]
+    map <- l[grepl("genetic_map",l)]
+    sample <- list.files(global$KGEN,recursive=T,pattern="sample",full.names=T)
+    
+    out.log("Run shapeit check")
+    out.log.cmd(paste("shapeit -check -V phasing-input.vcf -M ",map,
+                      " --input-ref ",hap," ",legend," ",sample,
+                      " --output-log shapeit-check.log",sep=""))
+    out.log("Run shapeit")
+    out.log.cmd(paste("shapeit -V phasing-input.vcf -M ",map,
+                      " --input-ref ",hap," ",legend," ",sample,
+                      " --exclude-snp shapeit-check.snp.strand.exclude -O phasing-output ",add.args,
+                      " && shapeit -convert --input-haps phasing-output --output-vcf phasing-output.vcf",sep=""))
+    if(hg19.convert) {
+      out.log("Reformat phased vcf")
+      out.log.cmd("sed -i 's#^chr##g' phasing-output.vcf && bgzip phasing-output.vcf && tabix -f phasing-output.vcf.gz")
+    }
+  } else if(config$phasing_software == "eagle") {
+    out.log("Run eagle")
+    out.log.cmd("bgzip -f phasing-input.vcf && tabix -f phasing-input.vcf.gz")
+    vcfRef <- list.files(db.dir,pattern=paste(".chr",gsub("chr","",chromosome),"[_.].*bcf$",sep=""),full.names = T,recursive = T)
+    if(config$reference_identifier %in% c("GRCh37","hg19")) {
+      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg19",full.names = T)
+    } else if(config$reference_identifier == "hg38") {
+      map <- list.files(paste(global$EAGLE,"/tables",sep=""),pattern="hg38",full.names = T)
+    }
+    out.log.cmd(paste(global$EAGLE,"/eagle --geneticMapFile ",map," --vcfRef ",vcfRef," --vcfTarget phasing-input.vcf.gz --vcfOutFormat z --outPrefix phasing-output && tabix -f phasing-output.vcf.gz",sep=""))
+  }
+  
+  out.log.cmd("bcftools view phasing-output.vcf.gz | awk '{print $1\";\"$2\";\"$4\";\"$5\"\t\"$10}' > phasing-output.txt")
+  tmp <- read.table("phasing-output.txt")
+  phasing <- data.frame(phase=tmp[,2])
+  rownames(phasing) <- tmp[,1]
+  save(phasing,file="phasing.rda")
+  setwd("..")
 }
