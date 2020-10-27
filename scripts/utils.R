@@ -18,6 +18,9 @@ read.config.worker <- function(config.path) {
     obj[[i]] <- config[i,2]
   }
   names(obj) <- config[,1]
+  if(is.null(obj$phasing_software)) {
+    obj$phasing_software <- "none"
+  }
   
   for(n in c("SNPEFF","DBSNP","KGEN","EAGLE","EAGLE_HG19_REF","EAGLE_HG38_REF","analysis_path","reference","bam","vcf","phased_vcf")) {
     if(n %in% names(obj)) {
@@ -35,21 +38,32 @@ read.config.worker <- function(config.path) {
   }
   
   if("GAP_REQUIREMENT" %in% names(obj)) {
-    obj$GAP_REQUIREMENT <- as.numeric(obj$GAP_REQUIREMENT)
+    obj$GAP_REQUIREMENT <- as.integer(obj$GAP_REQUIREMENT)
   }
   if("READS_TARGET" %in% names(obj)) {
-    obj$READS_TARGET <- as.numeric(obj$READS_TARGET)
+    obj$READS_TARGET <- as.integer(obj$READS_TARGET)
+  }
+  if("MAX_READS" %in% names(obj)) {
+    obj$MAX_READS <- as.integer(obj$MAX_READS)
   }
   if("BATCH_SIZE" %in% names(obj)) {
-    obj$BATCH_SIZE <- as.numeric(obj$BATCH_SIZE)
+    obj$BATCH_SIZE <- as.integer(obj$BATCH_SIZE)
   }
   if("bulk" %in% names(obj)) {
     obj$bulk <- as.logical(obj$bulk)
   }
   if("MAX_DISTANCE_10X" %in% names(obj)) {
-    obj$MAX_DISTANCE_10X <- as.numeric(obj$MAX_DISTANCE_10X)
+    obj$MAX_DISTANCE_10X <- as.integer(obj$MAX_DISTANCE_10X)
   }
-  
+  if("MEMORY" %in% names(obj)) {
+    obj$MEMORY <- as.integer(obj$MEMORY)
+  }
+  if("BOOTSTRAP_REPLICATES" %in% names(obj)) {
+    obj$BOOTSTRAP_REPLICATES <- as.integer(obj$BOOTSTRAP_REPLICATES)
+  }
+  if("WALL_TIME" %in% names(obj)) {
+    obj$WALL_TIME <- as.integer(obj$WALL_TIME)
+  }
   if(!("reference_identifier" %in% names(obj))) {
     obj$reference_identifier <- "hg19"
   }
@@ -86,7 +100,12 @@ get.chromosomes <- function(config) {
     if(config$gender == "female") {
       chromosomes <- c(chromosomes,"X")
     }
+  } else if(config$reference_identifier == "GRCm38") {
+    chromosomes <- c("NC_000067.6","NC_000068.7","NC_000069.6","NC_000070.6","NC_000071.6","NC_000072.6","NC_000073.6",
+                     "NC_000074.6","NC_000075.6","NC_000076.6","NC_000077.6","NC_000078.6","NC_000079.6","NC_000080.6",
+                     "NC_000081.6","NC_000082.6","NC_000083.6","NC_000084.6","NC_000085.6")
   } else {
+    print(config$reference_identifier)
     stop("Cannot get chromosomes.")
   }
   if(!is.null(config$only_chromosomes)) {
@@ -106,9 +125,9 @@ reverse.complement <- function(x) {
   return(x)
 }
 
-job.loop <- function(bash.commands,job.names) {
+job.loop <- function(bash.commands,job.names,memory,wall.time) {
   out.log("Submitting jobs...")
-  res <- submit.jobs(bash.commands,job.names)
+  res <- submit.jobs(bash.commands,job.names,memory,wall.time)
   if(!res) {
     out.log("Parallel job submission failed.")
     stop("Parallel job submission failed.")
@@ -185,6 +204,37 @@ combine.objects <- function(in.list) {
 annotate.and.phase.vcf <- function(chromosome) {
   out.log(paste("Annotating and phasing calls.vcf.gz",sep=""))
   out.log(paste("Output vcf: calls.id.vcf.gz",sep=""))
+  #mouse
+  if(config$reference_identifier == "GRCm38") {
+    out.log.cmd(paste("cp calls.vcf.gz  calls.id.vcf.gz && tabix -f calls.id.vcf.gz",sep=""))
+    suppressWarnings(dir.create("phasing"))
+    setwd("phasing")
+    out.log("Mouse - prephased")
+    out.log.cmd(paste("bcftools view -h ../calls.id.vcf.gz",
+                      " | grep -e '##contig' -e '#CHROM' -e '##FORMAT=<ID=GT' -e '##FILTER' -e '##ALT' -e '##fileformat'",
+                      " > phasing-output.vcf",sep=""))
+    out.log.cmd(paste("bcftools view ../calls.id.vcf.gz",
+                      " | awk 'BEGIN{OFS=\"\t\"}{if($8 ~ \"crossbred\"){$8 = \".\"; $9 = \"GT\"; print $0}}'",
+                      " | tr ':' '\t'",
+                      " | cut -f 1-10",
+                      " | grep -e '#' -e '0/0' -e '0/1' -e '1/0' -e '1/1' -e '0|1' -e '1|1'",
+                      " | sed 's#1/0#0|1#g'",
+                      " | sed 's#0|1#0|1#g'",
+                      " | sed 's#1|0#0|1#g'",
+                      " | sed 's#0/1#0|1#g'",
+                      " | sed 's#1/1#1|1#g'",
+                      " | sed 's#0/0#0|0#g'",
+                      " >> phasing-output.vcf",
+                      " && bgzip phasing-output.vcf",
+                      " && tabix -f phasingg-output.vcf.gz",sep=""))
+    out.log.cmd("bcftools view phasing-output.vcf.gz | awk '{print $1\";\"$2\";\"$4\";\"$5\"\t\"$10}' > phasing-output.txt")
+    tmp <- read.table("phasing-output.txt")
+    phasing <- data.frame(phase=tmp[,2])
+    rownames(phasing) <- tmp[,1]
+    save(phasing,file="phasing.rda")
+    setwd("..")
+    return(0)
+  }
   hg19.convert <-  F
   if(config$phasing_software == "shapeit" & config$reference_identifier == "hg19") {
     hg19.convert <- T
@@ -225,9 +275,9 @@ annotate.and.phase.vcf <- function(chromosome) {
                     ifelse(hg19.convert," | sed 's#^#chr#g'",""),
                     " >> phasing-input.vcf",sep=""))
   if(config$phasing_software == "shapeit") {
-    tmp <- paste("[.]chr",gsub("chr","",chromosome),"[.]",sep="")
+    tmp <- paste("_chr",gsub("chr","",chromosome),"[._]",sep="")
     if(chromosome == "X") {
-      tmp <- ".chrX_(non|NON)PAR."
+      tmp <- "_chrX_(non|NON)PAR."
       sex <- data.frame(sample=config$sample,sex=ifelse(config$gender == "male",1,2))
       write.table(x = sex,file = "sex.ped",quote = F,sep = "\t",row.names = F,col.names = F)
       add.args <- "--chrX --input-sex sex.ped"

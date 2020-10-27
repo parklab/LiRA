@@ -1,4 +1,4 @@
-#! /home/clb36/parkhome/installed/local/bin/python2.7
+#!/usr/bin/env python
 #samtools_view.py     Bernardo  3mar2016  v. 5mar  5PM
 #requires python2.7  
 #usage: samtools_view.py   --bam reads.bam  --fasta reference_genomic2.fasta  --chr ctg2_left_rc --start 177718 --end 177722

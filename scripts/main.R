@@ -17,7 +17,7 @@ if(is.na(cmd)) {
 
 #read config file
 if(!is.na(args[1])) {
-  if(!args[2] ==  "joint") {
+  if(!(args[2] %in% c("joint","joint_varcall"))) {
     config <- read.config(args[1])
     if(is.null(config$mode)) {
       config$mode <- "lira"
@@ -44,7 +44,7 @@ if(config$mode == "lira") {
   source(paste(Sys.getenv("LIRA_DIR"),"/scripts/functions10x.R",sep=""))
 }
 
-if(!(cmd %in% c("null_command","joint","joint_subset"))) {
+if(!(cmd %in% c("null_command","joint_varcall","joint","joint_subset"))) {
   suppressWarnings(dir.create(config$analysis_path))
   setwd(config$analysis_path)
 } 
@@ -102,7 +102,7 @@ if(cmd == "split") {
     job.names <- paste(digest(list(config,date(),"split")),"_",chromosomes,sep="")
     cmds <- paste("lira split -c ",normalizePath("config.txt")," -m ",chromosomes,sep="")
     if(length(chromosomes) > 0) {
-      res <- job.loop(cmds,job.names)
+      res <- job.loop(cmds,job.names,wall.time=1440,memory=32)
     }
   } 
   else {
@@ -113,8 +113,19 @@ if(cmd == "split") {
 if(cmd == "plink") {
   overwrite <- as.logical(args[3])
   batch.size <- suppressWarnings(as.numeric(args[4]))
+  memory <- suppressWarnings(as.numeric(args[5]))
+  wall.time <- suppressWarnings(as.numeric(args[6]))
+  
   if(is.na(batch.size)) {
     batch.size <- global$BATCH_SIZE
+  }
+  
+  if(is.na(memory)) {
+    memory <- global$MEMORY
+  }
+  
+  if(is.na(wall.time)) {
+    wall.time <- global$WALL_TIME
   }
   scripts <- list.files("job_scripts")
   done.files <- paste("progress/.",gsub(".sh","",scripts),sep="")
@@ -132,7 +143,7 @@ if(cmd == "plink") {
   cmds <- paste(getwd(),"/job_scripts/",scripts,sep="")
   batches <- batcher(cmds,batch.size)
   if(tot > 0) {
-    res <- job.loop(batches,names(batches))
+    res <- job.loop(batches,names(batches),memory,wall.time)
   }
 }
 
@@ -156,6 +167,17 @@ if(cmd == "compare") {
   parallel <- as.logical(args[5])
   overwrite <- as.logical(args[6])
   wait <- as.logical(args[7])
+  memory <- suppressWarnings(as.numeric(args[8]))
+  wall.time <- suppressWarnings(as.numeric(args[9]))
+  
+  if(is.na(memory)) {
+    memory <- global$MEMORY
+  }
+  
+  if(is.na(wall.time)) {
+    wall.time <- global$WALL_TIME
+  }
+  
   if(config$mode == "lira") {
     if(!grepl("^[/]",bulk.config)) {
       bulk.config <- paste(owd,"/",bulk.config,sep="")
@@ -204,7 +226,7 @@ if(cmd == "compare") {
       cmds <- paste("lira compare -s ",config$analysis_path,"/config.txt -b ",bulk.config$analysis_path,"/config.txt -m ",chromosomes,ifelse(overwrite," -o ",""),ifelse(wait," -w",""),sep="") 
     }
     if(length(chromosomes) > 0) {
-      res <- job.loop(cmds,job.names)
+      res <- job.loop(cmds,job.names,memory=memory,wall.time=wall.time)
     }
   } 
   else {
@@ -232,6 +254,9 @@ if(cmd == "ppower") {
   bulk.config <- args[3]
   overwrite <- as.logical(args[4])
   batch.size <- suppressWarnings(as.numeric(args[5]))
+  memory <- suppressWarnings(as.numeric(args[6]))
+  wall.time <- suppressWarnings(as.numeric(args[7]))
+  
   if(config$mode == "lira") {
     if(!grepl("^[/]",bulk.config)) {
       bulk.config <- paste(owd,"/",bulk.config,sep="")
@@ -248,6 +273,12 @@ if(cmd == "ppower") {
   if(is.na(batch.size)) {
     batch.size <- global$BATCH_SIZE
   }
+  if(is.na(memory)) {
+    memory <- global$MEMORY
+  }
+  if(is.na(wall.time)) {
+    wall.time <- global$WALL_TIME
+  }
   ind <- file.exists(done.files)
   completed <- done.files[ind]
   
@@ -261,13 +292,14 @@ if(cmd == "ppower") {
   cmds <- paste(job.dir,"/",scripts,sep="")
   batches <- batcher(cmds,batch.size)
   if(length(scripts) > 0) {
-    res <- job.loop(batches,names(batches))
+    res <- job.loop(batches,names(batches),memory,wall.time)
   }
 }
 
 if(cmd == "varcall") {
   bulk.config <- args[3]
   overwrite <- as.logical(args[4])
+  force <- as.logical(args[5])
   if(config$mode == "lira") {
     if(!grepl("^[/]",bulk.config)) {
       bulk.config <- paste(owd,"/",bulk.config,sep="")
@@ -282,7 +314,30 @@ if(cmd == "varcall") {
     out.log("Overwriting previous run")
     out.log.cmd(paste("rm progress/.varcall_",bulk.config$name," 2> /dev/null",sep=""))
   }
-  varcall(config,bulk.config,overwrite)
+  varcall(config,bulk.config,overwrite,force)
+}
+
+if(cmd == "joint_varcall") {
+  config.list <- args[1]
+  bulk.config.list <- args[3]
+  out.directory <- args[4]
+  if(!grepl("^[/]",out.directory)) {
+    out.directory  <- paste(owd,"/",out.directory,sep="")
+  }
+  overwrite <- as.logical(args[5])
+  single.cell.configs <- lapply(readLines(config.list),function(x) {
+    if(!grepl("^[/]",x)) {
+      x <- paste(owd,"/",x,sep="")
+    }
+    return(read.config(x))
+  })
+  bulk.configs <- lapply(readLines(bulk.config.list),function(x) {
+    if(!grepl("^[/]",x)) {
+      x <- paste(owd,"/",x,sep="")
+    }
+    return(read.config(x))
+  })
+  joint_varcall(single.cell.configs,bulk.configs,out.directory,overwrite)
 }
 
 if(cmd == "joint") {
@@ -318,11 +373,10 @@ if(cmd == "joint_subset") {
   joint.subset(config,bulk.config,work.dir)
 }
 
-if(!(cmd %in% c("null_command","joint"))) {
+if(!(cmd %in% c("null_command","joint","joint_varcall"))) {
   setwd(config$analysis_path)
   out.log("Finish")
 } 
-
 
 if(cmd != "null_command") {
   setwd(owd)

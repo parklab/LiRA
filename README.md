@@ -49,7 +49,7 @@ Download [the 1000 genomes phase 3 haplotype set](https://mathgen.stats.ox.ac.uk
 5. (Optional) Ensure that `lira` is in your `PATH`.
 
 ## Inputs to LiRA (required)
-  * A set of called variants in VCF format.  This call set should include both germline and prospective somatic variants and must include at least one single-cell and bulk sample (but can include more).  Running LiRA on VCF files generated over more samples will increase runtime but will provide a (potential) advantage, as it will enable viewing in all samples the evidence for all variation discovered across all samples.  At the moment, to run LiRA the input VCF must have been generated using GATK Haplotype Caller.  The variant quality score recalibration (VQSR) step in the GATK best practices workflow is unnecessary.
+  * A set of called variants in VCF format.  This call set should include both germline and prospective somatic variants and must include at least one single-cell and bulk sample (but can include more).In other words, the single-cell and bulk samples must come from the VCF file. Running LiRA on VCF files generated over more samples will increase runtime but will provide a (potential) advantage, as it will enable viewing in all samples the evidence for all variation discovered across all samples.  At the moment, to run LiRA the input VCF must have been generated using GATK Haplotype Caller.  The variant quality score recalibration (VQSR) step in the GATK best practices workflow is unnecessary.
   * The BAM files used to produce the VCF (one for single cell, and one for bulk).
 
 ## Outputs of LiRA

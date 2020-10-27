@@ -26,7 +26,7 @@ PICARD	/n/data1/hms/dbmi/park/cbohrson/installed/local/bin/picard.jar
 GAP_REQUIREMENT	2000
 
 #Target number of reads per LiRA job
-READS_TARGET	100000
+READS_TARGET	10000
 
 #Partition to submit to for parallelization
 PARTITION	short
@@ -34,11 +34,17 @@ PARTITION	short
 #Batch size for parallelization (number of scripts per job)
 BATCH_SIZE	10
 
-#Method to use for creating sSNV control curve of composite coverage vs. genome-wide sSNV rate.  Options are 'germline' (use germline sSNVs) or 'general' (use all powered sites).  'general' is not yet implemented.
-CONTROL_METHOD	germline
+#Method to use for creating sSNV control curve of composite coverage vs. genome-wide sSNV rate.  Options are 'germline' (use germline sSNVs), 'general' (use all powered sites), or 'constant' (approximate true sSNV vs. composite-coverage relationship as constant). 'general' requires a genome file in the same directory as the reference.
+CONTROL_METHOD	constant
 
 #Script in $LIRA_DIR/scripts to use for parallelization
 PARALLEL_SCRIPT	slurm.R
+
+#Memory per slurm job in GB
+MEMORY	2
+
+#Wall time per slurm job in minutes
+WALL_TIME	10
 
 #Number of sampling replicates to use for CONTROL_METHOD
 BOOTSTRAP_REPLICATES	100

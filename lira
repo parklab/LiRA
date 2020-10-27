@@ -25,12 +25,16 @@ def parse_args():
 	parser['plink'].add_argument('-c','--config',default=None,help='Path to a config file.',required=True)
 	parser['plink'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite existing results files.',required=False)
 	parser['plink'].add_argument('-a','--batch_size',default=None,help='Job batch size (overrides value in global-config.txt).',required=False)
+	parser['plink'].add_argument('-y','--memory_per_slurm_job',default=None,help='Job memory request (overrides value in global-config.txt).',required=False)
+	parser['plink'].add_argument('-l','--wall_time',default=None,help='Job wall time (overrides value in global-config.txt).',required=False)
 	parser['plink'].set_defaults(func=plink)
 	
 	parser['compare'] = parser['subparse'].add_parser('compare',help='Compare single-cell and bulk data.  If not using 10x data, the chosen single-cell and bulk analyses must have come from the same, multisample VCF file. Power job scripts are made in "ANALYSIS_PATH/job_scripts."')
 	parser['compare'].add_argument('-s','--single_cell_config',default=None,help='Path to a single-cell or 10x config file.',required=True)
-	parser['compare'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=False)
+	parser['compare'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=True)
 	parser['compare'].add_argument('-m','--chr',default=None,help='Chromosome to analyze.',required=False)
+	parser['compare'].add_argument('-y','--memory_per_slurm_job',default=None,help='Job memory request for -p (overrides value in global-config.txt).',required=False)
+	parser['compare'].add_argument('-l','--wall_time',default=None,help='Job wall time for -p (overrides value in global-config.txt).',required=False)
 	parser['compare'].add_argument('-p','--parallel',default=False,action='store_true',dest='parallel',help='Run all chromosomes in parallel.',required=False)
 	parser['compare'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite completed chromosomal analyses.  Warning: This will remove and recreate the "compare" subdirectory.',required=False)
 	parser['compare'].add_argument('-w','--wait',default=False,action='store_true',dest='wait',help='Wait for completion of bulk jobs before executing (instead of throwing an error).  Useful for incorporating commands into an automated pipeline.')
@@ -38,16 +42,26 @@ def parse_args():
 	
 	parser['ppower'] = parser['subparse'].add_parser('ppower',help='Run scripts created by "compare" in parallel.')
 	parser['ppower'].add_argument('-s','--single_cell_config',default=None,help='Path to a single-cell or 10x config file.',required=True)
-	parser['ppower'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=False)
+	parser['ppower'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=True)
 	parser['ppower'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite existing results files.',required=False)
 	parser['ppower'].add_argument('-a','--batch_size',default=None,help='Job batch size (overrides value in global-config.txt).',required=False)
+	parser['ppower'].add_argument('-y','--memory_per_slurm_job',default=None,help='Job memory request (overrides value in global-config.txt).',required=False)
+	parser['ppower'].add_argument('-l','--wall_time',default=None,help='Job wall time (overrides value in global-config.txt).',required=False)
 	parser['ppower'].set_defaults(func=ppower)
 	
 	parser['varcall'] = parser['subparse'].add_parser('varcall',help='Call single-cell somatic single-nucleotide variants.')
 	parser['varcall'].add_argument('-s','--single_cell_config',default=None,help='Path to a single-cell or 10x config file.',required=True)
 	parser['varcall'].add_argument('-b','--bulk_config',default=None,help='Path to a bulk config file (unused for 10x).',required=False)
+	parser['varcall'].add_argument('-f','--force',default=False,action='store_true',dest='force',help='Force varcall step even if power analysis is incomplete.')
 	parser['varcall'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Overwrite completed analysis.  Warning: This will remove and recreate the "varcall" subdirectory.',required=False)
 	parser['varcall'].set_defaults(func=varcall)
+
+	parser['joint_varcall'] = parser['subparse'].add_parser('joint_varcall',help='Call single-cell somatic single-nucleotide variants, utilizing multiple single-cell samples [experimental].')
+	parser['joint_varcall'].add_argument('-s','--single_cell_config_list',default=None,help='Path to a file with single-cell config files, one per line.',required=True)
+	parser['joint_varcall'].add_argument('-b','--bulk_config_list',default=None,help='Path to a file with bulk config files, one per line.',required=True)
+	parser['joint_varcall'].add_argument('-d','--directory',default=None,help='Path to directory to store results.',required=True)
+	parser['joint_varcall'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Force overwrite (removes directory if it exists).',required=False)
+	parser['joint_varcall'].set_defaults(func=joint_varcall)
 
 	parser['joint'] = parser['subparse'].add_parser('joint',help='Analyze variants across a set of cells derived from this same VCF and compared against a common bulk sample.')
 	parser['joint'].add_argument('-l','--config_list',default=None,help='Path to a file with single-cell config files, one per line.',required=True)
@@ -55,7 +69,9 @@ def parse_args():
 	parser['joint'].add_argument('-d','--directory',default=None,help='Path to directory to store results.',required=True)
 	parser['joint'].add_argument('-u','--use_uncertain_calls',default=False,action='store_true',dest='use_uncertain_calls',help='Use uncertain calls for joint calling.')
 	parser['joint'].add_argument('-p','--use_low_power',default=False,action='store_true',dest='use_low_power',help='Use low power calls for joint calling.')
-	parser['joint'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Force overwrite (removes directory if it exists).')
+	parser['joint'].add_argument('-y','--memory_per_slurm_job',default=None,help='Job memory request (overrides value in global-config.txt).',required=False)
+	parser['joint'].add_argument('-l','--wall_time',default=None,help='Job wall time (overrides value in global-config.txt).',required=False)
+	parser['joint'].add_argument('-o','--overwrite',default=False,action='store_true',dest='overwrite',help='Force overwrite (removes directory if it exists).',required=False)
 	parser['joint'].set_defaults(func=joint)
 	return parser['argparse'].parse_args()
 
@@ -69,16 +85,19 @@ def split(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config),"split",str(args.chr),str(args.parallel),str(args.overwrite)])
 
 def plink(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config),"plink",str(args.overwrite),str(args.batch_size)])
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config),"plink",str(args.overwrite),str(args.batch_size),str(args.memory_per_slurm_job),str(args.wall_time)])
 
 def compare(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"compare",str(args.bulk_config),str(args.chr),str(args.parallel),str(args.overwrite),str(args.wait)])
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"compare",str(args.bulk_config),str(args.chr),str(args.parallel),str(args.overwrite),str(args.wait),str(args.memory_per_slurm_job),str(args.wall_time)])
 
 def ppower(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"ppower",str(args.bulk_config),str(args.overwrite),str(args.batch_size)])
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"ppower",str(args.bulk_config),str(args.overwrite),str(args.batch_size),str(args.memory_per_slurm_job),str(args.wall_time)])
 
 def varcall(args):
-	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"varcall",str(args.bulk_config),str(args.overwrite)])
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config),"varcall",str(args.bulk_config),str(args.overwrite),str(args.force)])
+
+def joint_varcall(args):
+	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.single_cell_config_list),"joint_varcall",str(args.bulk_config_list),str(args.directory),str(args.overwrite)])
 
 def joint(args):
 	call(["Rscript","--vanilla",lira_dir + "/scripts/main.R",str(args.config_list),"joint",str(args.bulk_config),str(args.directory),str(args.use_uncertain_calls),str(args.use_low_power),str(args.overwrite)])

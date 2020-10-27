@@ -209,6 +209,8 @@ local.region.function <- function(config,work.dir) {
       caf.col <- "%INFO/DBSNP_AF"
     } else if(config$phasing_software == "shapeit") {
       caf.col <- "%INFO/DBSNP_CAF"
+    } else if(config$reference_identifier == "GRCm38") {
+      caf.col <- "%INFO/crossbred"
     }
     cmds <- c(paste("bcftools query -i 'TYPE=\"snp\" & N_ALT=1' -s ",config$sample," -R targets -f '",c("%CHROM;%POS;%REF;%ALT\\t%ID",
                                                                                                         ifelse(config$bulk,caf.col,"."),
@@ -261,6 +263,7 @@ local.region.function <- function(config,work.dir) {
       names(site.frame)[names(site.frame) == "single.cell.gt"] <- "bulk.gt"
       names(site.frame)[names(site.frame) == "single.cell.gq"] <- "bulk.gq"
       #load phasing
+      
       dumb <- system(paste("bcftools query -R targets -f '%CHROM;%POS;%REF;%ALT\t[%GT]\n' ../../phasing/phasing-output.vcf.gz 2> /dev/null | grep -e '0|1' -e '1|0' > phasing.txt",sep=""))
       phasing <- try(read.table("phasing.txt",sep="\t"),silent = T)
       if(class(phasing) != "try-error") {
@@ -347,6 +350,12 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
     obj$linkage <- linkage
     
     vcf.info <- do.call(rbind,lapply(paste(jobs.dir,"/",j,"/vcf.info.rda",sep=""),function(x){load(x); return(vcf.info)}))
+    vcf.info <- do.call(rbind,lapply(j,function(x){
+      tmp <- paste(jobs.dir,"/",x,"/vcf.info.rda",sep="")
+      load(tmp)
+      vcf.info$job <- x
+      return(vcf.info)
+    }))
     vcf.info <- vcf.info[order(vcf.info$pos),]
     obj$vcf.info <- vcf.info
     return(obj)
@@ -389,6 +398,15 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
   site.frame$in.linkage <- rownames(site.frame) %in% c(single.cell.linkage$site1,single.cell.linkage$site2)
   site.frame$onek.bulk.het <- (site.frame$pop.ref.freq != 1) & (site.frame$bulk.gt == "0/1")
   site.frame$somatic <- (site.frame$bulk.gt == "0/0")|(site.frame$bulk.gt == "./.")
+  
+  if(bulk.config$reference_identifier == "GRCm38") {
+    load(paste(bulk.config$analysis_path,"/",chromosome,"/phasing/phasing.rda",sep=""))
+    save(list=ls(),file = "/n/data1/hms/dbmi/park/cbohrson/Juan/vcf-test/saved.rda")
+    site.frame$pop.ref.freq[rownames(site.frame) %in% rownames(phasing)] <- 0.5
+    ind <- rownames(site.frame) %in% rownames(phasing[phasing$phase == "0|1",,drop=F])
+    site.frame$onek.bulk.het <- ind
+    site.frame$bulk.phasing[ind] <- 1
+  }
   
   onek.bulk.sites <- rownames(site.frame)[site.frame$onek.bulk.het]
   somatic.sites <- rownames(site.frame)[site.frame$somatic]
@@ -452,6 +470,7 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
                                                  dc.single.cell.function=function(b,s){s$RR + s$VV},#should be just s$RR?
                                                  flag.functions=flag.functions)
   
+
   #trans, site 2
   flag.functions[["sc_dropout"]] <- function(b,s){s$RV == 0}
   onek.bulk.site2.trans.info <- haplotype.parser(ind=with(bulk.linkage,RV > VV) & tmp,
@@ -485,7 +504,6 @@ compare <- function(config, bulk.config, chromosome, overwrite, wait) {
                                                hc.single.cell.function=function(b,s){s$VV},
                                                dc.single.cell.function=function(b,s){s$RV + s$VR},#should be just s$RV?
                                                flag.functions=flag.functions)
-
   combined.onek <- rbind(onek.bulk.site1.cis.info,onek.bulk.site2.cis.info,onek.bulk.site1.trans.info,onek.bulk.site2.trans.info)
   flags <- sapply(base::split(combined.onek$flags,combined.onek$site),function(x){paste(x,collapse=", ")})
   site.frame[names(flags),"onek.flags"] <- flags
@@ -947,7 +965,7 @@ local.power.function <- function(config,bulk.config,work.dir) {
   setwd(owd)
 }
 
-varcall <- function(config,bulk.config,overwrite) {
+varcall <- function(config,bulk.config,overwrite,force) {
   dir <- paste("varcall_",bulk.config$name,sep="")
   if(overwrite) {
     out.log("Overwriting...")
@@ -955,26 +973,41 @@ varcall <- function(config,bulk.config,overwrite) {
   }
   chromosomes <- get.chromosomes(config)
   
-  done <- unlist(lapply(chromosomes,function(chromosome){
+  done <- lapply(chromosomes,function(chromosome){
     l <- list.files(paste(config$analysis_path,"/",chromosome,"/jobs",sep=""))
     tmp <- paste(chromosome,"_",l,sep="")
-    done <- file.exists(paste(config$analysis_path,"/progress/.power_",bulk.config$name,"_",tmp,sep=""))
+    p <- paste(config$analysis_path,"/progress/.power_",bulk.config$name,"_",tmp,sep="")
+    done <- file.exists(p)
     names(done) <- paste(config$analysis_path,"/power.",bulk.config$name,"_job_scripts/",tmp,".sh",sep="")
     return(done)
-  }))
+  })
+  names(done) <- chromosomes
 
-  if(any(!done)) {
-    out.log("Jobs not done from ppower:")
-    sapply(names(done)[!done],function(x){out.log(x)})
-    stop("Jobs not done from ppower")
+  
+  if(!force) {
+    done <- unlist(done)
+    if(any(!done)) {
+      out.log("Jobs not done from ppower:")
+      sapply(names(done)[!done],function(x){out.log(x)})
+      stop("Jobs not done from ppower")
+    }
+  } else {
+    undone <- lapply(done,function(x){x[!x]})
+    undone <- do.call(rbind,lapply(seq_along(undone),function(x){
+      tmp <- sapply(strsplit(gsub(".sh","",names(undone[[x]])),"/|_"),function(y){y[length(y)]})
+      return(data.frame(chromosome=rep(names(undone)[x],length(tmp)),job=tmp))
+      }))
+    undone$job.dir <- paste("../",undone$chromosome,"/jobs/",undone$job,sep="")
   }
+  
   suppressWarnings(dir.create(dir))
   setwd(dir)
   
   #Load power files
-
-  
   job.dirs <- unlist(lapply(chromosomes,function(x){list.files(paste("../",x,"/jobs",sep=""),full.names = T)}))
+  if(force) {
+    job.dirs <- job.dirs[!(job.dirs %in% undone$job.dir)]
+  }
   
   powers <- combine.objects(lapply(job.dirs,function(x){
     load(paste(x,"/powers.",bulk.config$name,".rda",sep=""))
@@ -985,7 +1018,7 @@ varcall <- function(config,bulk.config,overwrite) {
   
   powers.one <- paste(job.dirs,"/powers.one.",bulk.config$name,".bed",sep="")
   powers.two <- paste(job.dirs,"/powers.two.",bulk.config$name,".bed",sep="")
-  
+
   #Create allele specific power bed files
   bed.combine <- function(tag,bed.vec) {
     tmp <- paste("powers.",tag,".bed.tmp",sep="")
@@ -1000,33 +1033,90 @@ varcall <- function(config,bulk.config,overwrite) {
   dumb <- bed.combine("two",powers.two)
   
   #Combine mutation and data files
-  mutations <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/mutations.",bulk.config$name,".rda",sep="")); return(mutations)}))
-  save(mutations,file="mutations.rda")
+  if(!file.exists("mutations.rda")) {
+    mutations <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/mutations.",bulk.config$name,".rda",sep="")); return(mutations)}))
+    save(mutations,file="mutations.rda")
+  } else {
+    load("mutations.rda")
+  }
   
-  candidate.somatic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/candidate.somatic.",bulk.config$name,".rda",sep="")); names(candidate.somatic)[names(candidate.somatic) == "composite_coverage"] <- "stat"; return(candidate.somatic)}))
-  save(candidate.somatic,file="candidate.somatic.rda")
+  if(!file.exists("candidate.somatic.rda")) {
+    candidate.somatic <- do.call(rbind,lapply(chromosomes,function(chr){
+      load(paste("../",chr,"/compare/candidate.somatic.",bulk.config$name,".rda",sep=""))
+      names(candidate.somatic)[names(candidate.somatic) == "composite_coverage"] <- "stat"
+      return(candidate.somatic)
+      }))
+    save(candidate.somatic,file="candidate.somatic.rda")
+  } else {
+    load("candidate.somatic.rda")
+  }
   
-  all.somatic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/all.somatic.",bulk.config$name,".rda",sep="")); names(all.somatic)[names(all.somatic) == "composite_coverage"] <- "stat"; return(all.somatic)}))
-  save(all.somatic,file="all.somatic.rda")
+  if(!file.exists("all.somatic.rda")) {
+    all.somatic <- do.call(rbind,lapply(chromosomes,function(chr){
+      load(paste("../",chr,"/compare/all.somatic.",bulk.config$name,".rda",sep=""))
+      names(all.somatic)[names(all.somatic) == "composite_coverage"] <- "stat"
+      return(all.somatic)
+      }))
+    save(all.somatic,file="all.somatic.rda")
+  } else {
+    load("all.somatic.rda")
+  }
   
-  data <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/data.",bulk.config$name,".rda",sep="")); return(data)}))
-  save(data,file="data.rda")
+  if(!file.exists("all.mosaic.rda")) {
+    all.mosaic <- do.call(rbind,lapply(chromosomes,function(chr){
+      load(paste("../",chr,"/compare/all.mosaic.",bulk.config$name,".rda",sep=""))
+      names(all.mosaic)[names(all.mosaic) == "composite_coverage"] <- "stat"
+      return(all.mosaic)
+      }))
+    save(all.mosaic,file="all.mosaic.rda")
+  } else {
+    load("all.mosaic.rda")
+  }
   
-  all.mosaic <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/all.mosaic.",bulk.config$name,".rda",sep="")); return(all.mosaic)}))
-  save(all.mosaic,file="all.mosaic.rda")
+  if(force) {
+    for(i in 1:nrow(undone)) {
+      mutations <- mutations[!((mutations$job == undone$job[i]) & (mutations$chromosome == undone$chromosome[i])),]
+      candidate.somatic <- candidate.somatic[!((candidate.somatic$job == undone$job[i]) & (candidate.somatic$chromosome == undone$chromosome[i])),]
+      all.somatic <- all.somatic[!((all.somatic$job == undone$job[i]) & (all.somatic$chromosome == undone$chromosome[i])),]
+      all.mosaic <- all.mosaic[!((all.mosaic$job == undone$job[i]) & (all.mosaic$chromosome == undone$chromosome[i])),]
+    }
+  }
+
+
+
+
+  #data <- do.call(rbind,lapply(chromosomes,function(chr){load(paste("../",chr,"/compare/data.",bulk.config$name,".rda",sep="")); return(data)}))
+  #save(data,file="data.rda")
+  
+  cum.pseudo <- numeric(0)
+  cum.dc <- numeric(0)
+  for(i in seq_along(chromosomes)) {
+    chr <- chromosomes[i]
+    load(paste("../",chr,"/compare/data.",bulk.config$name,".rda",sep=""))
+    onekg.linkage <- data[(data$hc.bulk >= 2) & (data$type == "1KG"),]
+    onekg.linkage$pseudostat <- onekg.linkage$hc.single.cell
+    onekg.linkage$pseudostat[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk] <- onekg.linkage$hc.bulk[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk]
+    onekg.linkage <- onekg.linkage[onekg.linkage$pseudostat >= 2,]
+    onekg.linkage$dc <- onekg.linkage$dc.single.cell > 0
+    
+    cum.pseudo <- c(cum.pseudo,onekg.linkage$pseudostat)
+    cum.dc <- c(cum.dc, onekg.linkage$dc)
+  }
+
   
   #Make modified powers
   #Rate of spurious observation of somatic alternate allele in bulk
   bulk.alt.rate <- (sum(mutations$bulk.alt.count[mutations$onek.bulk.het] > 0)/sum(mutations$onek.bulk.het))/2
   
   #Rate of spurious disqualification of somatic sites by read discordance based on observed linkage between known polymorphisms
-  onekg.linkage <- data[(data$hc.bulk >= 2) & (data$type == "1KG"),]
-  onekg.linkage$pseudostat <- onekg.linkage$hc.single.cell
-  onekg.linkage$pseudostat[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk] <- onekg.linkage$hc.bulk[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk]
-  onekg.linkage <- onekg.linkage[onekg.linkage$pseudostat >= 2,]
-  onekg.linkage$dc <- onekg.linkage$dc.single.cell > 0
+  # onekg.linkage <- data[(data$hc.bulk >= 2) & (data$type == "1KG"),]
+  # onekg.linkage$pseudostat <- onekg.linkage$hc.single.cell
+  # onekg.linkage$pseudostat[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk] <- onekg.linkage$hc.bulk[onekg.linkage$hc.single.cell > onekg.linkage$hc.bulk]
+  # onekg.linkage <- onekg.linkage[onekg.linkage$pseudostat >= 2,]
+  # onekg.linkage$dc <- onekg.linkage$dc.single.cell > 0
   
-  key <- table(c(onekg.linkage$pseudostat,0),c(onekg.linkage$dc,T))
+  # key <- table(c(onekg.linkage$pseudostat,0),c(onekg.linkage$dc,T))
+  key <- table(c(cum.pseudo, 0), c(cum.dc, T))
   key <- key[-1,]
   key.rate <- key[,2]/(key[,1] + key[,2])
   key.rate <- key.rate[names(key.rate) %in% names(powers)]
@@ -1046,64 +1136,73 @@ varcall <- function(config,bulk.config,overwrite) {
   powers.mod <- vec
   
   #Bootstrap germline
-  suppressWarnings(dir.create("bootstrap"))
-  suppressWarnings(setwd("bootstrap"))
-  onek <- mutations[mutations$onek.bulk.het,]
-  onek <- onek[!is.na(onek$stat),]
-  onek$site <- rownames(onek)
-  thresh <- 2
-  candidate.somatic <- candidate.somatic[candidate.somatic$stat >= thresh,]
-  onek <- onek[onek$stat >= thresh,]
-  local <- function(mut,som) {
-    mut <- base::split(mut,mut$distance)
-    distances <- table(som$distance)
-    new <- list()
-    target <- distances * 4
-    for(n in names(distances)) {
-      if(!(n %in% names(mut))) {
-        tmp <- as.numeric(names(mut))
-        k <- as.numeric(n)
-        n.new <- as.character(tmp[abs(tmp - k) == min(abs(tmp - k))])
-        if(length(n.new) > 1) {
-          piece <- do.call(rbind,mut[n.new])
+  if(global$CONTROL_METHOD == "germline") {
+    suppressWarnings(dir.create("bootstrap"))
+    suppressWarnings(setwd("bootstrap"))
+    onek <- mutations[mutations$onek.bulk.het,]
+    onek <- onek[!is.na(onek$stat),]
+    onek$site <- rownames(onek)
+    thresh <- 2
+    candidate.somatic <- candidate.somatic[candidate.somatic$stat >= thresh,]
+    onek <- onek[onek$stat >= thresh,]
+    local <- function(mut,som) {
+      mut <- base::split(mut,mut$distance)
+      distances <- table(som$distance)
+      new <- list()
+      target <- distances * 4
+      for(n in names(distances)) {
+        if(!(n %in% names(mut))) {
+          tmp <- as.numeric(names(mut))
+          k <- as.numeric(n)
+          n.new <- as.character(tmp[abs(tmp - k) == min(abs(tmp - k))])
+          if(length(n.new) > 1) {
+            piece <- do.call(rbind,mut[n.new])
+          } else {
+            piece <- mut[[n.new]]
+          }
+          new[[n]] <- piece
+          mut <- mut[-which(names(mut) %in% n.new)]
         } else {
-          piece <- mut[[n.new]]
+          new[[n]] <- mut[[n]]
+          mut <- mut[-which(names(mut) == n)]
         }
-        new[[n]] <- piece
-        mut <- mut[-which(names(mut) %in% n.new)]
-      } else {
-        new[[n]] <- mut[[n]]
-        mut <- mut[-which(names(mut) == n)]
+      }
+      correct <- names(new)[sapply(new,nrow) < target]
+      for(n in correct) {
+        while(nrow(new[[n]]) < target[n]) {
+          tmp <- as.numeric(names(mut)) - as.numeric(n)
+          add <- names(mut)[tmp == min(tmp)]
+          if(length(add) > 1) {
+            piece <- do.call(rbind,mut[[add]])
+          } else {
+            piece <- mut[[add]]
+          }
+          new[[n]] <- rbind(new[[n]],piece)
+          mut <- mut[-which(names(mut) %in% add)]
+        }
+      }
+      for(i in 1:global$BOOTSTRAP_REPLICATES) {
+        tmp <- lapply(seq_along(distances),function(x){
+          n <- names(distances)[x]
+          item <- new[[n]][sample(1:nrow(new[[n]]),size=distances[x],replace=F),]
+        })
+        booty <- do.call(rbind,tmp)
+        save(booty,file=paste(i,".",thresh,".rda",sep=""))
       }
     }
-    correct <- names(new)[sapply(new,nrow) < target]
-    for(n in correct) {
-      while(nrow(new[[n]]) < target[n]) {
-        tmp <- as.numeric(names(mut)) - as.numeric(n)
-        add <- names(mut)[tmp == min(tmp)]
-        if(length(add) > 1) {
-          piece <- do.call(rbind,mut[[add]])
-        } else {
-          piece <- mut[[add]]
-        }
-        new[[n]] <- rbind(new[[n]],piece)
-        mut <- mut[-which(names(mut) %in% add)]
-      }
-    }
-    for(i in 1:global$BOOTSTRAP_REPLICATES) {
-      tmp <- lapply(seq_along(distances),function(x){
-        n <- names(distances)[x]
-        item <- new[[n]][sample(1:nrow(new[[n]]),size=distances[x],replace=F),]
-      })
-      booty <- do.call(rbind,tmp)
-      save(booty,file=paste(i,".",thresh,".rda",sep=""))
-    }
+    dumb <- local(onek,candidate.somatic)
+    m <- max(candidate.somatic$stat)
+    bootstrap <- colMeans(do.call(rbind,lapply(1:global$BOOTSTRAP_REPLICATES,function(x){load(paste(x,".",thresh,".rda",sep="")); return((table(c(booty$stat,2:m)) - 1)[as.character(2:m)])})))
+    save(bootstrap,file="bootstrap.rda")
+    setwd("..")
+  } 
+  else if(global$CONTROL_METHOD == "general") {
+    #genome <- read.table(paste(config$reference_file,".genome",sep=""),sep="\t")
+    
+  } else if(global$CONTROL_METHOD == "constant") {
+    bootstrap <- (powers.mod / sum(powers.mod)) * nrow(candidate.somatic)
   }
-  dumb <- local(onek,candidate.somatic)
-  m <- max(candidate.somatic$stat)
-  bootstrap <- colMeans(do.call(rbind,lapply(1:global$BOOTSTRAP_REPLICATES,function(x){load(paste(x,".",thresh,".rda",sep="")); return((table(c(booty$stat,2:m)) - 1)[as.character(2:m)])})))
-  save(bootstrap,file="bootstrap.rda")
-  setwd("..")
+
   
   #Fit two-component model and assign sSNV quality scores
   result <- data.frame(stat.val=as.numeric(names(bootstrap)),
@@ -1193,7 +1292,7 @@ varcall <- function(config,bulk.config,overwrite) {
   obj$somatic.rate <- obj$data$control.rate[1]
   obj$somatic.rate.lb <- cr.min
   obj$somatic.rate.ub <- cr.max
-  obj$fpr <- (noise/(signal + noise))[which(data$stat.val == obj$stat_threshold)]
+  #obj$fpr <- (noise/(signal + noise))[which(data$stat.val == obj$stat_threshold)]
   eval(parse(text=paste("obj$rsomatic <- function(n){sample(c(",paste(obj$control.rate.bg[,1],collapse=","),"),replace=F,size=n)}",sep="")))
   
   #Make summary file
@@ -1279,11 +1378,13 @@ varcall <- function(config,bulk.config,overwrite) {
     all.somatic$phred.quality[all.somatic$stat == obj$data$stat.val[j]] <- -10*log10(obj$data$fpr.estimate[j])
     all.somatic$fp.prob[all.somatic$stat == obj$data$stat.val[j]] <- obj$data$fpr.estimate[j]
   }
+
   all.somatic$status <- "low_power"
   all.somatic$status[all.somatic$stat < 0] <- "filtered_fp"
   all.somatic$status[all.somatic$stat >= 2] <- "uncertain_call"
   all.somatic$status[all.somatic$stat >= obj$stat_threshold] <- "pass"
   
+
   tmp <- mutations[all.somatic$to,"bulk.phasing"]
   ind <- all.somatic$orientation == "trans"
   ind2 <- tmp == 2
@@ -1292,6 +1393,7 @@ varcall <- function(config,bulk.config,overwrite) {
   all.somatic$bulk.phasing <- tmp
   ssnvs <- all.somatic
   
+
   unlinked.somatic <- mutations[mutations$somatic,]
   unlinked.somatic <- unlinked.somatic[!(rownames(unlinked.somatic) %in% rownames(ssnvs)),]
   unlinked.somatic$status <- "unlinked"
@@ -1302,6 +1404,8 @@ varcall <- function(config,bulk.config,overwrite) {
   for(f in fix) {
     unlinked.somatic[,f] <- NA
   }
+
+  
   unlinked.somatic <- unlinked.somatic[,colnames(ssnvs)]
   ssnvs <- rbind(ssnvs,unlinked.somatic)
   
@@ -1322,13 +1426,16 @@ varcall <- function(config,bulk.config,overwrite) {
       mosaic[,gsub("mosaic.","",c)] <- mosaic[,c]
     }
   }
-  onek <- mutations[mutations$onek.bulk.het,]
-  onek$phred.quality <- NA
-  onek$fp.prob <- NA
-  onek$status <- "germline_polymorphic_het"
+  # onek <- mutations[mutations$onek.bulk.het,]
+  # onek$phred.quality <- NA
+  # onek$fp.prob <- NA
+  # onek$status <- "germline_polymorphic_het"
+  
+
   
   ssnvs <- ssnvs[is.na(ssnvs$mosaic.stat),]
-  ssnvs <- rbind(ssnvs,mosaic,onek)
+  # ssnvs <- rbind(ssnvs,mosaic,onek)
+  ssnvs <- rbind(ssnvs, mosaic)
   
   n <- nrow(ssnvs)
   fmt.gt <- rep("GT",n)
@@ -1424,13 +1531,22 @@ varcall <- function(config,bulk.config,overwrite) {
   
   summary[["Total passing sSNVs: "]] <- sum(ssnvs$status %in% c("pass","mosaic;pass"))
   if(config$gender == "male") {
-    summary[["Estimated total # of sSNVs: "]] <- round((3.122 + 3.227) * obj$somatic.rate)
+    if(config$reference_identifier == "GRCm38") {
+        total <- round((2.554 + 2.634) * obj$somatic.rate)
+    } else {
+      total <- round((3.122 + 3.227) * obj$somatic.rate)
+    }
   } else if (config$gender == "female") {
-    summary[["Estimated total # of sSNVs: "]] <- round((3.227  * 2) * obj$somatic.rate)
+    if(config$reference_identifier == "GRCm38") {
+      total <- round((2.634 * 2) * obj$somatic.rate)
+    } else {
+      total <- round((3.227  * 2) * obj$somatic.rate)
+    }
   }
+  summary[["Estimated total # of sSNVs: "]]  <- total
   summary[["Estimated sensitivity: "]] <- summary[["Total passing sSNVs: "]]/summary[["Estimated total # of sSNVs: "]]
   summary[["Estimated FPR: "]] <- sprintf("%0.2f",mean(ssnvs$fp.prob[ssnvs$status == "pass"]))
-  
+
   summary.lines <- paste(names(summary),summary,sep="")
   writeLines(summary.lines,con="summary.txt")
   
@@ -1443,7 +1559,219 @@ varcall <- function(config,bulk.config,overwrite) {
   out.log.cmd(paste("touch ",progress.file,sep=""))
 }
 
-joint <- function(single.cell.configs,bulk.config,out.directory,use.uncertain.calls,use.low.power,overwrite) {
+joint_varcall <- function(single.cell.configs,bulk.configs,out.directory,overwrite) {
+  owd <- getwd()
+  
+  if(overwrite) {
+    out.log("Overwriting...")
+    out.log.cmd(paste("rm -r ",out.directory," 2> /dev/null",sep=""))
+  }
+  suppressWarnings(dir.create(out.directory))
+  setwd(out.directory)
+  
+  powers.list <- list()
+  candidate.somatic.list <- list()
+  bootstrap.list <- list()
+  
+  for(i in seq_along(single.cell.configs)) {
+    config <- single.cell.configs[[i]]
+    bulk.config <- bulk.configs[[i]]
+    varcall.dir <- paste(config$analysis_path,"/varcall_",bulk.config$name,sep="")
+    owd <- getwd()
+    setwd(varcall.dir)
+
+    load("powers.mod.rda")
+    powers.list[[i]] <- powers.mod
+    
+    load("candidate.somatic.rda")
+    candidate.somatic$name <- config$name
+    candidate.somatic$bulk_name <- bulk.config$name
+    candidate.somatic.list[[i]] <- candidate.somatic
+    
+    tmp <- list.files("bootstrap")
+    tmp <- tmp[tmp != "bootstrap.rda"]
+    tmp <- tmp[grepl(".2.",tmp,fixed=T)]
+    
+    bootstrap.list[[i]] <- table(unlist(lapply(tmp,function(x){load(paste("bootstrap/",x,sep="")); return(booty$stat)})))/length(tmp)
+    setwd(owd)
+  }
+  
+  candidate.somatic <- do.call(rbind,candidate.somatic.list)
+  save(candidate.somatic,file="candidate.somatic.rda")
+  m <- max(candidate.somatic$stat)
+
+  bootstrap.list <- lapply(bootstrap.list,function(x){tmp <- numeric(m - 1); names(tmp) <- 2:m; x <- x[names(x) %in% names(tmp)]; tmp[names(x)] <- x; return(tmp)})
+  bootstrap <- colSums(do.call(rbind,bootstrap.list))
+  
+  powers.list <- lapply(powers.list,function(x){tmp <- numeric(m - 1); names(tmp) <- 2:m; x <- x[names(x) %in% names(tmp)]; tmp[names(x)] <- x; return(tmp)})
+  powers.mod <- colSums(do.call(rbind,powers.list))
+  
+  result <- data.frame(stat.val=as.numeric(names(bootstrap)),
+                       observed.ssnv.count=as.numeric(table(c(candidate.somatic$stat,seq(from=2,by=1,to=max(as.numeric(names(bootstrap))))))) -1,
+                       bootstrap=bootstrap,
+                       power=powers.mod)
+  result$control.rate <- 1e9*((result$bootstrap + 0.5)/(result$power + 0.5))
+  result$observed.ssnv.rate <- 1e9 * ((result$observed.ssnv.count+ 0.5)/(result$power + 0.5))
+  tmp <- sapply(seq_along(result$observed.ssnv.rate),function(x) {
+    qbeta(p = c(0.005,0.995),shape1 = 0.5 + result$observed.ssnv.count[x],shape2 = 0.5 + result$power[x] - result$observed.ssnv.count[x]) * 1e9
+  })
+  result$observed.ssnv.rate.lb <- tmp[1,]
+  result$observed.ssnv.rate.ub <- tmp[2,]
+  
+  sample.observed.ssnv.rate <- function() {
+    return(rbeta(n = nrow(result),shape1 = 0.5 + result$observed.ssnv.count,shape2 = 0.5 + result$power - result$observed.ssnv.count)*1e9)
+  }
+  
+  alpha <- result$observed.ssnv.count + 0.5
+  beta <- result$power + 0.5
+  v <- (alpha * beta)/((alpha + beta)^2 * (alpha + beta + 1))
+  v <- v/min(v)
+  v <- 1/v
+  result$error.rate <- (1/2)^(result$stat.val - 2)
+  
+  f <- function(params,rate=result$observed.ssnv.rate){
+    a <- params[1]; b <- params[2]
+    objective <- sum(v * ((a * result$error.rate + b * result$control.rate) - rate)^2)
+    if((a < 0)|(b < 0)) {
+      objective <- objective^2 
+    }
+    return(objective)
+  }
+  
+  p <- c(result$observed.ssnv.rate[1],1)
+  minimum <- 1000
+  tmp <- list()
+  class(tmp) <- "try-error"
+  while(class(tmp) == "try-error") {
+    tmp <- nlm(f=f,p=p,gradtol=1e-8,iterlim=500,steptol=1e-8,fscale = minimum,typsize=p)
+  }
+  nlm.fit <- tmp
+  nlm.fit.bg <- do.call(rbind,lapply(1:100,function(x){
+    tmp <- list()
+    class(tmp) <- "try-error"
+    while(class(tmp) == "try-error") {
+      r <- sample.observed.ssnv.rate()
+      tmp <- try(nlm(f=function(p){f(p,rate=r)},p=p,gradtol=1e-8,iterlim=500,steptol=1e-8,fscale=minimum,typsize=p)$estimate,silent=T)
+    }
+    return(tmp)
+  }))
+  obj <- list()
+  obj$data <- result
+  obj$nlm.fit <- nlm.fit
+  obj$nlm.fit.bg <- nlm.fit.bg
+  obj$error.rate.bg <- t(apply(nlm.fit.bg,1,function(x){x[1] * result$error.rate}))
+  if(nrow(obj$error.rate.bg) == 1) {
+    obj$error.rate.bg <- t(obj$error.rate.bg)
+  }
+  colnames(obj$error.rate.bg) <- obj$data$stat.val
+  
+  obj$control.rate.bg <- t(apply(nlm.fit.bg,1,function(x){x[2] * result$control.rate}))
+  if(nrow(obj$control.rate.bg) == 1) {
+    obj$control.rate.bg <- t(obj$control.rate.bg)
+  }
+  colnames(obj$control.rate.bg) <- obj$data$stat.val
+  
+  obj$fit.bg <- obj$error.rate.bg + obj$control.rate.bg
+  obj$data$error.rate <- obj$data$error.rate * nlm.fit$estimate[1]
+  obj$data$control.rate <- obj$data$control.rate * nlm.fit$estimate[2]
+  obj$data$fit.rate <- obj$data$control.rate + obj$data$error.rate
+  obj$data$fpr.estimate <- obj$data$error.rate/(obj$data$control.rate + obj$data$error.rate)
+  
+  cr.max <- max(obj$control.rate.bg[,1])
+  obj$control.rate.bg[,1][obj$control.rate.bg[,1] < 0] <- 0
+  cr.min <- min(obj$control.rate.bg[,1])
+  
+  signal <- round(obj$data$observed.ssnv.count * (1 - obj$data$fpr.estimate))
+  signal <- sum(signal) - cumsum(signal) + signal
+  noise <- round(obj$data$observed.ssnv.count * obj$data$fpr.estimate)
+  noise <- sum(noise) - cumsum(noise) + noise
+  names(signal) <- names(noise) <- obj$data$stat.val
+  obj$stat_threshold <- as.numeric(names(which(noise/(signal + noise) <= 0.1)))[1]
+  if(is.na(obj$stat_threshold)) {
+    obj$stat_threshold <- Inf
+  }
+  obj$somatic.rate <- obj$data$control.rate[1]
+  obj$somatic.rate.lb <- cr.min
+  obj$somatic.rate.ub <- cr.max
+  #obj$fpr <- (noise/(signal + noise))[which(data$stat.val == obj$stat_threshold)]
+  eval(parse(text=paste("obj$rsomatic <- function(n){sample(c(",paste(obj$control.rate.bg[,1],collapse=","),"),replace=F,size=n)}",sep="")))
+  
+  #Make summary file
+  # metrics <- do.call(rbind,lapply(chromosomes,function(x){
+  #   load(paste("../",x,"/compare/summary.",bulk.config$name,".rda",sep="")); return(summary)
+  # }))[,c("onek","germline.phased","germline.misphased","somatic.phased","somatic.misphased")]
+  # metrics <- colSums(metrics)
+  
+  summary <- list()
+  # summary[["Polymorphic germline SNVs: "]] <- metrics["onek"]
+  # summary[["Properly phased germline SNVs: "]] <- metrics["germline.phased"]
+  # summary[["Improperly phased germline SNVs: "]] <- metrics["germline.misphased"]
+  # summary[["Properly phased sSNV candidates: "]] <- metrics["somatic.phased"]
+  # summary[["Improperly phased sSNV candidates: "]] <- metrics["somatic.misphased"]
+  summary[["sSNV rate (Nuc/Gbp): "]] <- round(obj$somatic.rate)
+  summary[["\tLower bound (98%): "]] <- round(obj$somatic.rate.lb)
+  summary[["\tUpper bound (98%): "]] <- round(obj$somatic.rate.ub)
+  summary[["Composite coverage threshold: "]] <- obj$stat_threshold
+  
+  
+  #Make rate plot
+  pdf("rate-plot.pdf")
+  xlim <- c(1,(max(obj$data$stat.val)+0.5)*1.05)
+  ylim <- c(0,max(obj$data$observed.ssnv.rate.ub)*1.2)
+  plot(x = -10,y = -10,xlim=xlim,ylim=ylim,bty='n',xlab="",ylab="",xaxt='n',yaxt='n')
+  points(x=obj$data$stat.val,y=obj$data$observed.ssnv.rate,pch=19)
+  bar.w <- 0.2
+  for(j in 1:nrow(obj$data)) {
+    lines(x = c(obj$data$stat.val[j],obj$data$stat.val[j]),y=c(obj$data$observed.ssnv.rate.lb[j],obj$data$observed.ssnv.rate.ub[j]))
+    lines(x = c(obj$data$stat.val[j] - bar.w, obj$data$stat.val[j] + bar.w),y=c(obj$data$observed.ssnv.rate.lb[j],obj$data$observed.ssnv.rate.lb[j]))
+    lines(x = c(obj$data$stat.val[j] - bar.w, obj$data$stat.val[j] + bar.w),y=c(obj$data$observed.ssnv.rate.ub[j],obj$data$observed.ssnv.rate.ub[j]))
+  }
+  error.min <- apply(obj$error.rate.bg,2,min)
+  error.max <- apply(obj$error.rate.bg,2,max)
+  polygon(x = c(obj$data$stat.val,obj$data$stat.val[seq(from=nrow(obj$data),by=-1,to=1)]),
+          y = c(error.min,error.max[seq(from=nrow(obj$data),by=-1,to=1)]),border=NA,col=rgb(1,0,0,alpha=0.25))
+  lines(x = obj$data$stat.val,y=obj$data$error.rate,col="red",lwd=1)
+  
+  cr.min <- apply(obj$control.rate.bg,2,min)
+  cr.max <- apply(obj$control.rate.bg,2,max)
+  polygon(x = c(obj$data$stat.val,obj$data$stat.val[seq(from=nrow(obj$data),by=-1,to=1)]),
+          y = c(cr.min,cr.max[seq(from=nrow(obj$data),by=-1,to=1)]),border=NA,col=rgb(0,0,1,alpha=0.25))
+  lines(x = obj$data$stat.val,y=obj$data$control.rate,col="blue",lwd=1)
+  
+  fit.min <- apply(obj$fit.bg,2,min)
+  fit.max <- apply(obj$fit.bg,2,max)
+  polygon(x = c(obj$data$stat.val,obj$data$stat.val[seq(from=nrow(obj$data),by=-1,to=1)]),
+          y = c(fit.min,fit.max[seq(from=nrow(obj$data),by=-1,to=1)]),border=NA,col=rgb(0,1,0,alpha=0.25))
+  lines(x = obj$data$stat.val,y=obj$data$fit.rate,col="green",lwd=1)
+  
+  ytick.at <- seq(from=0,by=100,to=max(ylim))
+  ytick <- as.character(ytick.at)
+  axis(side = 2,at = ytick.at,labels = ytick,las=2,cex.axis=1.4)
+  
+  xtick.at <- seq(from=max(obj$data$stat.val),by=-2,to=2)[nrow(obj$data):1]
+  xtick <- as.character(xtick.at)
+  axis(side = 1,at = xtick.at,labels = xtick,cex.axis=1.4)
+  axis(side = 1,tick = T,lwd.ticks=0,label=c("",""),at = c(min(obj$data$stat.val),max(obj$data$stat.val)))
+  
+  mtext(text = paste(config$name," vs. ",bulk.config$name,sep=""),side=3)
+  points(x = 1.5,y=obj$somatic.rate,pch=19,col="purple")
+  lines(x = c(1.5,1.5),y=c(obj$somatic.rate.lb,obj$somatic.rate.ub),col="purple",lwd=1)
+  lines(x = c(1.5 - bar.w,1.5 + bar.w),y = c(obj$somatic.rate.lb,obj$somatic.rate.lb),col="purple",lwd=1)
+  lines(x = c(1.5 - bar.w,1.5 + bar.w),y = c(obj$somatic.rate.ub,obj$somatic.rate.ub),col="purple",lwd=1)
+  lines(x = c(obj$stat_threshold,obj$stat_threshold),y=c(0,ylim[2]),lty="dashed",lwd=1)
+  par(xpd=NA)
+  mtext(text = "sSNVs/GBp",side = 2,at = -ylim[2]/6,adj = c(0.5,0.5),line = 4)
+  par(xpd=F)
+  
+  par(xpd=NA)
+  mtext(text = "Composite coverage (CC)",side = 1, at = (xlim[1] + xlim[2])/2, adj=c(0.5,0.5),line=3)
+  par(xpd=F)
+  dev.off()
+  
+  save(obj,file="call.rate_fit.rda")
+}
+
+joint <- function(single.cell.configs,bulk.config,out.directory,use.uncertain.calls,use.low.power,overwrite,job.memory,job.wall.time) {
   if(overwrite) {
     system(paste("rm -r ",out.directory," 2> /dev/null",sep=""))
   }
@@ -1471,7 +1799,7 @@ joint <- function(single.cell.configs,bulk.config,out.directory,use.uncertain.ca
   
   bash.commands <- paste("Rscript --vanilla $LIRA_DIR/scripts/main.R ",sapply(single.cell.configs,function(x){x$analysis_path}),"/config.txt joint_subset ",bulk.config$analysis_path,"/config.txt ",getwd(),sep="")
   job.names <- paste(digest(list(bash.commands,date())),seq_along(bash.commands),sep="_")
-  job.loop(bash.commands,job.names)
+  job.loop(bash.commands,job.names,job.memory,job.wall.time)
   
   all.ssnvs <- lapply(single.cell.configs,function(x){
     load(paste(x$name,".rda",sep=""))
