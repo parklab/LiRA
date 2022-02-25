@@ -22,7 +22,7 @@ sample	4643_Bulk-Liver
 #Indicates that this is a bulk sample.  Can be omitted or annotated as 'F' for single cell.
 bulk	T
 
-#Identifier for the reference file used.  Options currently are GRCh37, hg19, or hg38
+#Identifier for the reference file used.  Options currently are GRCh37, hg19, hg38, or GRCm38.  If GRCm38, the mouse is assumed to be crossbred with C57BL/6.  As a result all polymorphic SNPs are assumed to be present on the same chromosome (ie, no phasing software is used).
 reference_identifier	hg19
 
 #Haplotype phasing software to use.  Options are 'shapeit' or 'eagle'
